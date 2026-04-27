@@ -40,6 +40,8 @@ def get_columns(filters):
         cols.extend([
             {"label": _("Entered Via"), "fieldname": "voucher_type", "fieldtype": "Data", "width": 140},
             {"label": _("Document"), "fieldname": "voucher_no", "fieldtype": "Dynamic Link", "options": "voucher_type", "width": 170},
+            {"label": _("Purchase Invoice"), "fieldname": "purchase_invoice", "fieldtype": "Link", "options": "Purchase Invoice", "width": 170},
+            {"label": _("Payment Status"), "fieldname": "payment_status", "fieldtype": "Data", "width": 130},
             {"label": _("Entry Date"), "fieldname": "posting_date", "fieldtype": "Date", "width": 110},
             {"label": _("Age (Days)"), "fieldname": "age", "fieldtype": "Int", "width": 90},
             {"label": _("Ageing"), "fieldname": "age_bucket", "fieldtype": "Data", "width": 100},
@@ -98,6 +100,7 @@ def get_data(filters):
 
     origin_map = get_batch_origins(set(positive.keys()))
     supplier_map = get_supplier_map(origin_map.values())
+    pi_map = get_purchase_invoice_map(origin_map.values())
 
     today_d = getdate(today())
     rows = []
@@ -124,6 +127,8 @@ def get_data(filters):
             "balance_value": flt(balance_value, precision),
             "voucher_type": v_type,
             "voucher_no": v_no,
+            "purchase_invoice": (pi_map.get((v_type, v_no)) or {}).get("name"),
+            "payment_status": (pi_map.get((v_type, v_no)) or {}).get("status"),
             "posting_date": posting_date,
             "age": days,
             "age_bucket": age_bucket(days),
@@ -135,6 +140,8 @@ def get_data(filters):
     rows = apply_supplier_filters(rows, filters)
     rows = apply_entry_date_filter(rows, entry_from_date, entry_to_date)
     rows = apply_ageing_filter(rows, filters.get("ageing"))
+    rows = apply_entered_via_filter(rows, filters.get("entered_via"))
+    rows = apply_payment_status_filter(rows, filters.get("payment_status"))
 
     if not cint(filters.get("show_batch")):
         rows = aggregate_by_item_warehouse(rows, precision)
@@ -172,6 +179,18 @@ def apply_ageing_filter(rows, bucket):
     if not bucket:
         return rows
     return [r for r in rows if r.get("age_bucket") == bucket]
+
+
+def apply_entered_via_filter(rows, voucher_type):
+    if not voucher_type:
+        return rows
+    return [r for r in rows if r.get("voucher_type") == voucher_type]
+
+
+def apply_payment_status_filter(rows, status):
+    if not status:
+        return rows
+    return [r for r in rows if r.get("payment_status") == status]
 
 
 def apply_entry_date_filter(rows, entry_from_date, entry_to_date):
@@ -324,6 +343,60 @@ def build_top_parent_map(item_groups):
         return result
 
     return {ig: walk(ig) for ig in item_groups}
+
+
+def get_purchase_invoice_map(origins):
+    """Return {(voucher_type, voucher_no): {"name": pi, "status": status}} for batch origins.
+
+    PR origins resolve via `Purchase Invoice Item.purchase_receipt` to a submitted
+    Purchase Invoice. If a PR is billed across multiple PIs, the earliest submitted
+    PI (by posting_date, then creation) wins. PI origins map to themselves.
+    """
+    pr_names = set()
+    pi_self = set()
+    for o in origins:
+        v_type = o.get("voucher_type")
+        v_no = o.get("voucher_no")
+        if not (v_type and v_no):
+            continue
+        if v_type == "Purchase Receipt":
+            pr_names.add(v_no)
+        elif v_type == "Purchase Invoice":
+            pi_self.add(v_no)
+
+    pi_map = {}
+
+    if pi_self:
+        for r in frappe.db.sql(
+            """SELECT name, status FROM `tabPurchase Invoice` WHERE name IN %(v)s""",
+            {"v": tuple(pi_self)},
+            as_dict=True,
+        ):
+            pi_map[("Purchase Invoice", r["name"])] = {"name": r["name"], "status": r["status"]}
+
+    if pr_names:
+        rows = frappe.db.sql(
+            """
+            SELECT pii.purchase_receipt AS pr, pii.parent AS pi,
+                   pi.posting_date, pi.creation, pi.status
+            FROM `tabPurchase Invoice Item` pii
+            INNER JOIN `tabPurchase Invoice` pi ON pi.name = pii.parent
+            WHERE pi.docstatus = 1
+              AND pii.purchase_receipt IN %(prs)s
+            """,
+            {"prs": tuple(pr_names)},
+            as_dict=True,
+        )
+        by_pr = {}
+        for r in rows:
+            sort_key = (r["posting_date"], r["creation"])
+            existing = by_pr.get(r["pr"])
+            if existing is None or sort_key < existing[0]:
+                by_pr[r["pr"]] = (sort_key, r["pi"], r["status"])
+        for pr, (_, pi, status) in by_pr.items():
+            pi_map[("Purchase Receipt", pr)] = {"name": pi, "status": status}
+
+    return pi_map
 
 
 def get_supplier_map(origins):
