@@ -4,9 +4,13 @@
 import frappe
 from frappe.model.document import Document
 from frappe import _
+from frappe.utils import flt
 
 
 class SupplierPackingSlip(Document):
+    def validate(self):
+        self.consolidate_items()
+
     def on_submit(self):
         for item in self.supplier_packing_slip_item:
             if item.qty == 0:
@@ -15,6 +19,63 @@ class SupplierPackingSlip(Document):
     def on_cancel(self):
         if self.purchase_receipt:
             self.db_set('purchase_receipt', 0)
+
+    def consolidate_items(self):
+        """Merge rows that describe the same physical packing — same item, same
+        per-piece qty, same lot, same PO line — by summing PCS into the first
+        occurrence and dropping the duplicates. Per-row PO running totals are
+        recomputed afterwards so po_actual_qty / po_remaining_qty stay correct.
+        """
+        rows = list(self.supplier_packing_slip_item or [])
+        if not rows:
+            return
+
+        # Capture each PO line's original po_actual_qty from the FIRST row that
+        # references it — that row holds the un-split baseline.
+        original_po_qty = {}
+        for item in rows:
+            po_item = item.purchase_order_item
+            if po_item and po_item not in original_po_qty:
+                original_po_qty[po_item] = flt(item.po_actual_qty)
+
+        seen = {}
+        keepers = []
+        duplicates = []
+        for item in rows:
+            if not item.item_code:
+                # drop empty stub rows defensively
+                duplicates.append(item)
+                continue
+            key = (
+                item.item_code,
+                flt(item.custom_qty),
+                item.lot_no or "",
+                item.purchase_order_item or "",
+            )
+            existing = seen.get(key)
+            if existing is not None:
+                existing.pcs = flt(existing.pcs) + flt(item.pcs)
+                existing.qty = flt(existing.custom_qty) * flt(existing.pcs)
+                duplicates.append(item)
+            else:
+                seen[key] = item
+                keepers.append(item)
+
+        if not duplicates:
+            return
+
+        for dup in duplicates:
+            self.remove(dup)
+
+        used = {}
+        for idx, item in enumerate(keepers, 1):
+            item.idx = idx
+            po_item = item.purchase_order_item
+            if po_item and po_item in original_po_qty:
+                used_so_far = used.get(po_item, 0.0)
+                item.po_actual_qty = original_po_qty[po_item] - used_so_far
+                item.po_remaining_qty = item.po_actual_qty - flt(item.qty)
+                used[po_item] = used_so_far + flt(item.qty)
 
 @frappe.whitelist()
 def make_purchase_receipt(packing_slip):
