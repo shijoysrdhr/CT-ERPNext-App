@@ -35,10 +35,7 @@ doctype_js = {"Purchase Receipt" : "public/purchase_recipt.js",
               "Salary Slip" : "public/salary_slip.js",
               "Sales Invoice" : "public/sales_invoice.js",
               "Sales Order" : "public/sales_order.js",
-              "Purchase Invoice" : "public/purchase_invoice.js",
               "Employee Checkin" : "public/employee_checkin.js",
-              "Quotation": "public/quotation.js",
-              "Payment Entry": "public/payment_entry.js",
               }
 
 doctype_list_js = {"Item" : "public/item_list.js",
