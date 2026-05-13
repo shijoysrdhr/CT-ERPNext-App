@@ -246,7 +246,11 @@ def process_monthly_overtime_additional_salary():
                     if shift_end_dt <= shift_start_dt:
                         shift_end_dt += timedelta(days=1)
 
-                    if emp.holiday_list == "CT Holidays" and checkin_date.weekday() == 6:
+                    # Sunday work on either holiday list is fully OT — the entire
+                    # in→out span counts. Must include both lists so RT Sunday
+                    # Holidays employees get credit (their late/early is also
+                    # zeroed on Sunday in the before_save hook).
+                    if emp.holiday_list in ("CT Holidays", "RT Sunday Holidays") and checkin_date.weekday() == 6:
                         overtime_minutes = (out_time - in_time).total_seconds() / 60
                         total_overtime_minutes += overtime_minutes
                         continue
@@ -374,7 +378,9 @@ def create_overtime_additional_salary(payroll_date):
                 if shift_end_dt <= shift_start_dt:
                     shift_end_dt += timedelta(days=1)
 
-                if emp.holiday_list == "CT Holidays" and checkin_date.weekday() == 6:
+                # Sunday work on either holiday list is fully OT — see note in
+                # process_monthly_overtime_additional_salary.
+                if emp.holiday_list in ("CT Holidays", "RT Sunday Holidays") and checkin_date.weekday() == 6:
                     overtime_minutes = (out_time - in_time).total_seconds() / 60
                     total_overtime_minutes += overtime_minutes
                     continue
