@@ -53,7 +53,9 @@ def reset_late_early(from_date=None, to_date=None):
                 continue
 
             checkin_date = entries_sorted[0]["time"].date()
-            if emp.holiday_list == "CT Holidays" and checkin_date.weekday() == 6:
+            # Sunday work for employees on these holiday lists is overtime,
+            # not late/early — zero the fields. Matches the before_save hook.
+            if emp.holiday_list in ("CT Holidays", "RT Sunday Holidays") and checkin_date.weekday() == 6:
                 for entry in entries_sorted:
                     frappe.db.set_value("Employee Checkin", entry["name"], {
                         "custom_late_coming_minutes": 0,

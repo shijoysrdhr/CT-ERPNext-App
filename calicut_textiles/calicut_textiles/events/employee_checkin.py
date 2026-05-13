@@ -43,17 +43,6 @@ def update_employee_checkin_fields(doc, method):
 
     time_obj = doc.time if isinstance(doc.time, datetime) else get_datetime(doc.time)
 
-    employees = frappe.get_all("Employee", filters={"status": "Active"}, fields=["name", "employee_name", "company", "holiday_list"])
-
-    for emp in employees:
-        if (emp.holiday_list == "CT Holidays" or emp.holiday_list == "RT Sunday Holidays") and time_obj.weekday() == 6:
-            # doc.log_type = doc.log_type or "IN"
-            # doc.custom_total_hours = 0
-            doc.custom_late_coming_minutes = 0
-            doc.custom_early_going_minutes = 0
-            doc.custom_late_early = 0
-
-
     same_day_logs = frappe.db.get_all(
         "Employee Checkin",
         filters={
@@ -79,11 +68,14 @@ def update_employee_checkin_fields(doc, method):
     else:
         doc.log_type = "IN"
 
-    default_shift = frappe.db.get_value("Employee", doc.employee, "default_shift")
-    if not default_shift:
+    # Prefer the row's own shift (set by Fetch Shift / auto-attendance / Shift
+    # Assignment), fall back to the employee's default shift if the row hasn't
+    # been assigned one yet (e.g. just-inserted CrossChex rows).
+    shift_name = doc.shift or frappe.db.get_value("Employee", doc.employee, "default_shift")
+    if not shift_name:
         return
 
-    shift = frappe.get_doc("Shift Type", default_shift)
+    shift = frappe.get_doc("Shift Type", shift_name)
     if not shift.start_time or not shift.end_time:
         return
 
@@ -100,8 +92,17 @@ def update_employee_checkin_fields(doc, method):
     total_hours = total_seconds / 3600
     doc.custom_total_hours = round(total_hours, 2)
 
-    grace_late = 11
-    grace_early = 11
+    # If this employee's holiday list treats Sunday as a weekly off, Sunday
+    # work is overtime, not "late"/"early" — zero those fields and stop.
+    employee_holiday_list = frappe.db.get_value("Employee", doc.employee, "holiday_list")
+    if employee_holiday_list in ("CT Holidays", "RT Sunday Holidays") and time_obj.weekday() == 6:
+        doc.custom_late_coming_minutes = 0
+        doc.custom_early_going_minutes = 0
+        doc.custom_late_early = 0
+        return
+
+    grace_late = 10
+    grace_early = 10
 
     if doc.log_type == 'IN':
         grace_limit = shift_start + timedelta(minutes=grace_late)
