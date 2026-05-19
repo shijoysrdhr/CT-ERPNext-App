@@ -2,36 +2,60 @@ import frappe
 from frappe import _
 
 
-@frappe.whitelist()
-def get_batch_qty_for_website_items(names):
-	"""Given a list of Website Item names, return {name: batch_qty} for each.
-	Computes from Serial and Batch Entry — always live, no caching."""
-	if isinstance(names, str):
-		import json
+def refresh_website_item_batch_qty(sle, method=None):
+	"""Hook: when a Stock Ledger Entry is created/cancelled, recompute
+	custom_current_batch_qty on every Website Item linked to the touched batch.
 
-		names = json.loads(names)
-	if not names:
-		return {}
+	Wired via hooks.py doc_events on Stock Ledger Entry.
+	"""
+	if not sle or sle.is_cancelled:
+		# Cancellation: still need to refresh — read batch numbers from bundle anyway
+		pass
 
-	rows = frappe.db.sql(
-		"""
-		SELECT wi.name AS website_item, COALESCE(SUM(e.qty), 0) AS qty
-		FROM `tabWebsite Item` wi
-		LEFT JOIN `tabStock Ledger Entry` sle
-		    ON sle.is_cancelled = 0
-		    AND sle.docstatus < 2
-		    AND sle.warehouse = wi.website_warehouse
-		LEFT JOIN `tabSerial and Batch Entry` e
-		    ON e.parent = sle.serial_and_batch_bundle
-		    AND e.batch_no = wi.custom_batch_no
-		WHERE wi.name IN %(names)s
-		  AND wi.custom_batch_no IS NOT NULL
-		GROUP BY wi.name
-		""",
-		{"names": tuple(names)},
-		as_dict=True,
+	batch_nos = set()
+	if sle.batch_no:
+		batch_nos.add(sle.batch_no)
+	if sle.serial_and_batch_bundle:
+		rows = frappe.db.get_all(
+			"Serial and Batch Entry",
+			filters={"parent": sle.serial_and_batch_bundle},
+			fields=["batch_no"],
+		)
+		for r in rows:
+			if r.batch_no:
+				batch_nos.add(r.batch_no)
+
+	if not batch_nos:
+		return
+
+	website_items = frappe.db.get_all(
+		"Website Item",
+		filters={"custom_batch_no": ("in", list(batch_nos))},
+		fields=["name", "custom_batch_no", "website_warehouse"],
 	)
-	return {r.website_item: float(r.qty or 0) for r in rows}
+	for wi in website_items:
+		qty = _compute_batch_qty(wi.custom_batch_no, wi.website_warehouse)
+		frappe.db.set_value(
+			"Website Item", wi.name, "custom_current_batch_qty", qty, update_modified=False
+		)
+
+
+def _compute_batch_qty(batch_no, warehouse):
+	if not batch_no or not warehouse:
+		return 0
+	row = frappe.db.sql(
+		"""
+		SELECT COALESCE(SUM(e.qty), 0) AS qty
+		FROM `tabStock Ledger Entry` sle
+		INNER JOIN `tabSerial and Batch Entry` e ON e.parent = sle.serial_and_batch_bundle
+		WHERE e.batch_no = %(batch)s
+		  AND sle.warehouse = %(wh)s
+		  AND sle.is_cancelled = 0
+		  AND sle.docstatus < 2
+		""",
+		{"batch": batch_no, "wh": warehouse},
+	)
+	return float(row[0][0] or 0) if row else 0
 
 
 @frappe.whitelist()

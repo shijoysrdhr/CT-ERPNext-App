@@ -43,7 +43,6 @@ doctype_list_js = {"Item" : "public/item_list.js",
                    "Employee Checkin": "public/js/employee_checkin_list.js",
                    "Leave Encashment" : "public/js/leave_encashment_list.js",
                    "Additional Salary" : "public/js/additional_salary_list.js",
-                   "Website Item" : "public/website_item_list.js",
                    }
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
 # doctype_calendar_js = {"doctype" : "public/js/doctype_calendar.js"}
@@ -184,6 +183,10 @@ doc_events = {
     },
     "Employee Checkin": {
         "before_save": "calicut_textiles.calicut_textiles.events.employee_checkin.update_employee_checkin_fields"
+    },
+    "Stock Ledger Entry": {
+        "on_submit": "calicut_textiles.api.webshop.refresh_website_item_batch_qty",
+        "on_cancel": "calicut_textiles.api.webshop.refresh_website_item_batch_qty",
     },
     # "Payment Entry": {
     #     "before_delete": "calicut_textiles.calicut_textiles.doctype.daliy_cash_entry.daliy_cash_entry.delete_linked_daliy_cash_entry"

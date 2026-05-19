@@ -1,4 +1,12 @@
 frappe.ui.form.on("Website Item", {
+	refresh(frm) {
+		// On every form load, refresh the stored batch qty so the user sees live data
+		// without having to wait for SLE events to propagate.
+		if (frm.doc.custom_batch_no && !frm.is_new()) {
+			refresh_batch_qty(frm);
+		}
+	},
+
 	custom_batch_no(frm) {
 		if (!frm.doc.custom_batch_no) {
 			return;
@@ -31,24 +39,23 @@ frappe.ui.form.on("Website Item", {
 				// Webshop price from Item Price (batch-specific, else item-level)
 				frm.set_value("custom_webshop_price", data.price || 0);
 
-				if (data.qty) {
-					frappe.show_alert({
-						message: __("Batch {0}: {1} units available in {2}", [
-							frm.doc.custom_batch_no,
-							data.qty,
-							data.warehouse,
-						]),
-						indicator: "green",
-					});
-				} else {
-					frappe.show_alert({
-						message: __("Batch {0} has no positive stock — listing will show as out of stock", [
-							frm.doc.custom_batch_no,
-						]),
-						indicator: "orange",
-					});
-				}
+				// Current batch qty into the stored field — shows up in form + list view
+				frm.set_value("custom_current_batch_qty", data.qty || 0);
 			},
 		});
 	},
 });
+
+function refresh_batch_qty(frm) {
+	frappe.call({
+		method: "calicut_textiles.api.webshop.get_batch_details",
+		args: { batch_no: frm.doc.custom_batch_no },
+		callback(r) {
+			if (r.message && r.message.qty !== frm.doc.custom_current_batch_qty) {
+				// Update silently — don't trigger a dirty form state
+				frm.doc.custom_current_batch_qty = r.message.qty || 0;
+				frm.refresh_field("custom_current_batch_qty");
+			}
+		},
+	});
+}
