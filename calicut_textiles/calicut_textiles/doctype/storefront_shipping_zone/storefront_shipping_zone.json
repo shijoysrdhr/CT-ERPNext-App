@@ -1,0 +1,105 @@
+{
+ "actions": [],
+ "allow_import": 1,
+ "allow_rename": 1,
+ "autoname": "field:zone_name",
+ "creation": "2026-05-19 17:10:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "zone_name",
+  "rate",
+  "column_break_main",
+  "is_default",
+  "free_above",
+  "section_break_pincodes",
+  "pincode_prefixes",
+  "description"
+ ],
+ "fields": [
+  {
+   "description": "e.g. \"Kerala\", \"Rest of India\", \"International\".",
+   "fieldname": "zone_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Zone Name",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "rate",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Shipping Rate",
+   "non_negative": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_main",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "description": "If no pincode matches any zone, the default zone's rate is used. Mark exactly one zone as default.",
+   "fieldname": "is_default",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Is Default"
+  },
+  {
+   "description": "Orders with subtotal at or above this amount ship free in this zone. Leave 0 to disable.",
+   "fieldname": "free_above",
+   "fieldtype": "Currency",
+   "label": "Free Shipping Above",
+   "non_negative": 1,
+   "default": "0"
+  },
+  {
+   "fieldname": "section_break_pincodes",
+   "fieldtype": "Section Break",
+   "label": "Pincode matching"
+  },
+  {
+   "description": "Comma- or newline-separated pincode prefixes. A pincode matches if any prefix is its leading characters. Example: 670, 671, 672, 673, 678 for Kerala (north-side).",
+   "fieldname": "pincode_prefixes",
+   "fieldtype": "Small Text",
+   "label": "Pincode Prefixes"
+  },
+  {
+   "fieldname": "description",
+   "fieldtype": "Small Text",
+   "label": "Notes"
+  }
+ ],
+ "links": [],
+ "modified": "2026-05-19 17:10:00.000000",
+ "modified_by": "Administrator",
+ "module": "Calicut Textiles",
+ "name": "Storefront Shipping Zone",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "read": 1,
+   "role": "All"
+  }
+ ],
+ "search_fields": "zone_name,pincode_prefixes",
+ "show_name_in_global_search": 1,
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}
