@@ -177,17 +177,22 @@ def _stock_uom_for(item_code):
 
 
 def _slideshow_images(slideshow_name, fallback=None):
-	if not slideshow_name:
-		return [fallback] if fallback else []
-	rows = frappe.get_all(
-		"Website Slideshow Item",
-		filters={"parent": slideshow_name},
-		fields=["image"],
-		order_by="idx ASC",
-	)
-	images = [r.image for r in rows if r.image]
-	if not images and fallback:
-		return [fallback]
+	"""Build the product gallery: `website_image` first (matches the listing
+	card customers just clicked), then any Website Slideshow items in order,
+	deduped so the same file doesn't appear twice."""
+	images = []
+	if fallback:
+		images.append(fallback)
+	if slideshow_name:
+		rows = frappe.get_all(
+			"Website Slideshow Item",
+			filters={"parent": slideshow_name},
+			fields=["image"],
+			order_by="idx ASC",
+		)
+		for r in rows:
+			if r.image and r.image not in images:
+				images.append(r.image)
 	return images
 
 
