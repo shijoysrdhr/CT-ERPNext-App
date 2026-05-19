@@ -1,0 +1,165 @@
+{
+ "actions": [],
+ "allow_import": 1,
+ "allow_rename": 1,
+ "autoname": "field:banner_name",
+ "creation": "2026-05-19 17:30:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "banner_name",
+  "enabled",
+  "column_break_main",
+  "sort_order",
+  "theme",
+  "section_break_text",
+  "subtitle",
+  "title",
+  "description",
+  "section_break_cta",
+  "cta_label",
+  "cta_link",
+  "section_break_media",
+  "image",
+  "image_alt"
+ ],
+ "fields": [
+  {
+   "description": "Internal label for the banner, e.g. \"Wedding 2026 launch\". Not shown on the storefront.",
+   "fieldname": "banner_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Banner Name",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "default": "1",
+   "description": "Uncheck to hide this banner without deleting it.",
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Enabled"
+  },
+  {
+   "fieldname": "column_break_main",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "description": "Lower number shows earlier in the carousel.",
+   "fieldname": "sort_order",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Sort Order"
+  },
+  {
+   "default": "Light text on image",
+   "description": "Color of the overlay text on top of the image.",
+   "fieldname": "theme",
+   "fieldtype": "Select",
+   "label": "Text theme",
+   "options": "Light text on image\nDark text on image"
+  },
+  {
+   "fieldname": "section_break_text",
+   "fieldtype": "Section Break",
+   "label": "Text overlay"
+  },
+  {
+   "description": "Small uppercase text shown above the headline (e.g. \"Premium Fabrics\").",
+   "fieldname": "subtitle",
+   "fieldtype": "Data",
+   "label": "Eyebrow / Subtitle"
+  },
+  {
+   "fieldname": "title",
+   "fieldtype": "Data",
+   "label": "Headline",
+   "reqd": 1
+  },
+  {
+   "fieldname": "description",
+   "fieldtype": "Small Text",
+   "label": "Description"
+  },
+  {
+   "fieldname": "section_break_cta",
+   "fieldtype": "Section Break",
+   "label": "Call to action"
+  },
+  {
+   "description": "Leave blank to hide the button.",
+   "fieldname": "cta_label",
+   "fieldtype": "Data",
+   "label": "Button label"
+  },
+  {
+   "description": "Path or full URL, e.g. /category/Sarees.",
+   "fieldname": "cta_link",
+   "fieldtype": "Data",
+   "label": "Button link"
+  },
+  {
+   "fieldname": "section_break_media",
+   "fieldtype": "Section Break",
+   "label": "Image"
+  },
+  {
+   "description": "Full-bleed banner image. Recommended ~16:9 or 21:9 ratio, public file.",
+   "fieldname": "image",
+   "fieldtype": "Attach Image",
+   "label": "Image",
+   "reqd": 1
+  },
+  {
+   "description": "Description for screen readers / SEO. Defaults to the headline if blank.",
+   "fieldname": "image_alt",
+   "fieldtype": "Data",
+   "label": "Image alt text"
+  }
+ ],
+ "links": [],
+ "modified": "2026-05-19 17:30:00.000000",
+ "modified_by": "Administrator",
+ "module": "Calicut Textiles",
+ "name": "Storefront Banner",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Website Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "read": 1,
+   "role": "All"
+  }
+ ],
+ "search_fields": "banner_name,title",
+ "show_name_in_global_search": 1,
+ "sort_field": "sort_order",
+ "sort_order": "ASC",
+ "states": [],
+ "track_changes": 1
+}
