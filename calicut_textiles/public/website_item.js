@@ -15,9 +15,9 @@ frappe.ui.form.on("Website Item", {
 					frm.set_value("item_code", data.item_code);
 				}
 
-				// Seed Display Name with the batch number — user can edit it to anything
-				if (!frm.doc.custom_display_name) {
-					frm.set_value("custom_display_name", frm.doc.custom_batch_no);
+				// Seed Website Item Name with the batch number — user can rename it anytime
+				if (!frm.doc.web_item_name) {
+					frm.set_value("web_item_name", frm.doc.custom_batch_no);
 				}
 
 				// Route slug: products/<batch_no>
@@ -50,19 +50,5 @@ frappe.ui.form.on("Website Item", {
 				}
 			},
 		});
-	},
-
-	custom_display_name(frm) {
-		// Keep the standard webshop title (web_item_name) in sync with what the user typed
-		if (frm.doc.custom_display_name) {
-			frm.set_value("web_item_name", frm.doc.custom_display_name);
-		}
-	},
-
-	validate(frm) {
-		// Safety net: if web_item_name is somehow out of sync at save time, force it
-		if (frm.doc.custom_display_name && frm.doc.web_item_name !== frm.doc.custom_display_name) {
-			frm.doc.web_item_name = frm.doc.custom_display_name;
-		}
 	},
 });
