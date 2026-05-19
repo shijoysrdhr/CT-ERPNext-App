@@ -256,12 +256,12 @@ def _related_batches(item_code, exclude_name):
 
 
 def _category_descendants(category):
-	"""Return the category and all its descendant Website Item Groups so
-	filtering by 'Sarees' also returns products in 'Sarees > Silk',
-	'Sarees > Cotton', etc."""
+	"""Return the category and all its descendant Storefront Categories so
+	filtering by 'Sarees' also returns products in 'Sarees > Silk Sarees',
+	'Sarees > Cotton Sarees', etc."""
 	try:
 		descendants = frappe.get_all(
-			"Website Item Group",
+			"Storefront Category",
 			filters={"name": ("descendants of", category)},
 			pluck="name",
 		)

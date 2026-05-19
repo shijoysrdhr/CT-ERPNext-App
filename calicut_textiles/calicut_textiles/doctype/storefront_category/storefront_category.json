@@ -2,13 +2,13 @@
  "actions": [],
  "allow_import": 1,
  "allow_rename": 1,
- "autoname": "field:website_item_group_name",
+ "autoname": "field:storefront_category_name",
  "creation": "2026-05-19 14:00:00.000000",
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
-  "website_item_group_name",
-  "parent_website_item_group",
+  "storefront_category_name",
+  "parent_storefront_category",
   "is_group",
   "column_break_main",
   "weightage",
@@ -23,19 +23,19 @@
  ],
  "fields": [
   {
-   "fieldname": "website_item_group_name",
+   "fieldname": "storefront_category_name",
    "fieldtype": "Data",
    "in_list_view": 1,
-   "label": "Website Item Group Name",
+   "label": "Storefront Category Name",
    "reqd": 1,
    "unique": 1
   },
   {
-   "fieldname": "parent_website_item_group",
+   "fieldname": "parent_storefront_category",
    "fieldtype": "Link",
    "in_list_view": 1,
    "label": "Parent",
-   "options": "Website Item Group"
+   "options": "Storefront Category"
   },
   {
    "default": "0",
@@ -110,7 +110,7 @@
    "hidden": 1,
    "label": "Old Parent",
    "no_copy": 1,
-   "options": "Website Item Group",
+   "options": "Storefront Category",
    "print_hide": 1,
    "read_only": 1
   }
@@ -121,9 +121,9 @@
  "modified": "2026-05-19 14:00:00.000000",
  "modified_by": "Administrator",
  "module": "Calicut Textiles",
- "name": "Website Item Group",
+ "name": "Storefront Category",
  "naming_rule": "By fieldname",
- "nsm_parent_field": "parent_website_item_group",
+ "nsm_parent_field": "parent_storefront_category",
  "owner": "Administrator",
  "permissions": [
   {
@@ -155,7 +155,7 @@
    "role": "All"
   }
  ],
- "search_fields": "website_item_group_name,parent_website_item_group",
+ "search_fields": "storefront_category_name,parent_storefront_category",
  "show_name_in_global_search": 1,
  "sort_field": "creation",
  "sort_order": "DESC",

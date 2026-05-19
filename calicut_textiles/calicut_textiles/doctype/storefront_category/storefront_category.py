@@ -6,11 +6,11 @@ from frappe.utils.nestedset import NestedSet
 from frappe.website.utils import clear_cache
 
 
-class WebsiteItemGroup(NestedSet):
-	nsm_parent_field = "parent_website_item_group"
+class StorefrontCategory(NestedSet):
+	nsm_parent_field = "parent_storefront_category"
 
 	def autoname(self):
-		# Autoname via field:website_item_group_name; nothing extra to do here.
+		# Autoname via field:storefront_category_name; nothing extra to do here.
 		pass
 
 	def validate(self):
@@ -27,12 +27,12 @@ class WebsiteItemGroup(NestedSet):
 
 	def _derive_route(self):
 		"""URL slug — kebab-case from the name. Prefixed with parent slug
-		when the parent has a route, so nested groups get
+		when the parent has a route, so nested categories get
 		`sarees/silk-sarees` style paths."""
-		slug = frappe.scrub(self.website_item_group_name).replace("_", "-")
-		if self.parent_website_item_group:
+		slug = frappe.scrub(self.storefront_category_name).replace("_", "-")
+		if self.parent_storefront_category:
 			parent_route = frappe.db.get_value(
-				"Website Item Group", self.parent_website_item_group, "route"
+				"Storefront Category", self.parent_storefront_category, "route"
 			)
 			if parent_route:
 				return f"{parent_route}/{slug}"
