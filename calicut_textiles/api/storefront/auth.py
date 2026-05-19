@@ -220,23 +220,56 @@ def _send_otp_sms(phone, code):
 
 def _get_or_create_customer_by_phone(phone):
 	"""Phone is the storefront's identity. Look up Customer by mobile_no; if
-	none exists, create one with the configured defaults."""
+	none exists, create one with sensible defaults — preferring Storefront
+	Settings, falling back to Selling Settings, then to the ERPNext root
+	groups so OTP login works even before the admin has configured the
+	storefront settings doctype."""
 	existing = frappe.db.get_value("Customer", {"mobile_no": phone}, "name")
 	if existing:
 		return existing
 
-	from calicut_textiles.calicut_textiles.doctype.storefront_settings.storefront_settings import (
-		get_settings,
-	)
-	settings = get_settings()
+	customer_group, territory, fallback_name = _customer_defaults()
+
 	doc = frappe.new_doc("Customer")
-	doc.customer_name = settings.fallback_customer_name or "Storefront Customer"
+	doc.customer_name = fallback_name
 	doc.customer_type = "Individual"
-	doc.customer_group = settings.default_customer_group
-	doc.territory = settings.default_territory
+	doc.customer_group = customer_group
+	doc.territory = territory
 	doc.mobile_no = phone
 	doc.insert(ignore_permissions=True)
 	return doc.name
+
+
+def _customer_defaults():
+	"""Resolve (customer_group, territory, fallback_name) with graceful fallbacks."""
+	customer_group = None
+	territory = None
+	fallback_name = "Storefront Customer"
+
+	try:
+		from calicut_textiles.calicut_textiles.doctype.storefront_settings.storefront_settings import (
+			get_settings,
+		)
+		settings = get_settings()
+		customer_group = settings.default_customer_group or None
+		territory = settings.default_territory or None
+		fallback_name = settings.fallback_customer_name or fallback_name
+	except Exception:
+		pass
+
+	if not customer_group:
+		customer_group = (
+			frappe.db.get_single_value("Selling Settings", "customer_group")
+			or frappe.db.get_value("Customer Group", {"is_group": 0}, "name")
+			or "Individual"
+		)
+	if not territory:
+		territory = (
+			frappe.db.get_single_value("Selling Settings", "territory")
+			or frappe.db.get_value("Territory", {"is_group": 0}, "name")
+			or "All Territories"
+		)
+	return customer_group, territory, fallback_name
 
 
 def _create_session(customer, phone):
