@@ -9,7 +9,10 @@ import frappe
 from frappe import _
 
 
-# camelCase keys to mirror the storefront `Product` type.
+# Fields fetched from Website Item for catalog responses. `item_group` is the
+# internal (stock/accounting) classification — `custom_storefront_category` is
+# the customer-facing one, set independently per item. Storefront responses
+# expose the storefront category as `itemGroup` (see _serialize_product).
 _PRODUCT_FIELDS = [
 	"name",
 	"item_code",
@@ -17,6 +20,7 @@ _PRODUCT_FIELDS = [
 	"web_item_name",
 	"short_description",
 	"item_group",
+	"custom_storefront_category",
 	"route",
 	"custom_webshop_price",
 	"custom_current_batch_qty",
@@ -54,7 +58,10 @@ def list(
 
 	if category:
 		category_names = _category_descendants(category)
-		filters["item_group"] = ("in", category_names) if category_names else category
+		# Filter on the storefront-facing category, not the internal item_group.
+		filters["custom_storefront_category"] = (
+			("in", category_names) if category_names else category
+		)
 
 	if min_price is not None:
 		filters.setdefault("custom_webshop_price", [">=", float(min_price)])
@@ -147,13 +154,16 @@ def list_featured(limit=8):
 
 
 def _serialize_product(row):
+	# Storefront category takes precedence — falls back to internal item_group
+	# if the field isn't set yet on a given Website Item (transition period).
+	storefront_category = row.get("custom_storefront_category") or row.item_group or ""
 	return {
 		"name": row.name,
 		"itemCode": row.item_code or "",
 		"batchNo": row.custom_batch_no or "",
 		"title": row.web_item_name or row.name,
 		"shortDescription": row.short_description or None,
-		"itemGroup": row.item_group or "",
+		"itemGroup": storefront_category,
 		"route": row.route or "",
 		"price": float(row.custom_webshop_price or 0),
 		"uom": _stock_uom_for(row.item_code),
@@ -202,8 +212,9 @@ def _build_attributes(row):
 	attrs = {}
 	if row.brand:
 		attrs["Brand"] = row.brand
-	if row.item_group:
-		attrs["Category"] = row.item_group
+	category = row.get("custom_storefront_category") or row.item_group
+	if category:
+		attrs["Category"] = category
 	uom = _stock_uom_for(row.item_code)
 	if uom:
 		attrs["Unit"] = uom
