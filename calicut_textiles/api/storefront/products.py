@@ -128,8 +128,9 @@ def get(route):
 
 @frappe.whitelist(allow_guest=True)
 def list_featured(limit=8):
-	"""Return up to `limit` featured Website Items — currently the highest-weightage
-	published items with stock on hand."""
+	"""Return up to `limit` featured Website Items — newest published items with
+	stock on hand. (Website Item has no weightage column; if we want curated
+	ordering later, add a `custom_featured` Check field and sort by it first.)"""
 	limit = max(1, min(50, int(limit or 8)))
 
 	rows = frappe.get_all(
@@ -138,8 +139,8 @@ def list_featured(limit=8):
 			"published": 1,
 			"custom_current_batch_qty": (">", 0),
 		},
-		fields=_PRODUCT_FIELDS + ["weightage"],
-		order_by="weightage DESC, creation DESC",
+		fields=_PRODUCT_FIELDS,
+		order_by="creation DESC",
 		page_length=limit,
 	)
 	return [_serialize_product(row) for row in rows]
