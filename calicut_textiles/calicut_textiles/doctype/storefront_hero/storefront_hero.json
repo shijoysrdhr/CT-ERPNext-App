@@ -1,0 +1,112 @@
+{
+ "actions": [],
+ "creation": "2026-05-19 16:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "subtitle",
+  "title",
+  "description",
+  "section_break_cta",
+  "cta_label",
+  "cta_link",
+  "section_break_media",
+  "image",
+  "image_alt"
+ ],
+ "fields": [
+  {
+   "description": "Small uppercase text shown above the main headline (e.g. \"Since 1962\").",
+   "fieldname": "subtitle",
+   "fieldtype": "Data",
+   "label": "Eyebrow / Subtitle"
+  },
+  {
+   "description": "Main headline shown on the home page hero.",
+   "fieldname": "title",
+   "fieldtype": "Data",
+   "label": "Headline",
+   "reqd": 1
+  },
+  {
+   "description": "Short paragraph shown below the headline.",
+   "fieldname": "description",
+   "fieldtype": "Small Text",
+   "label": "Description"
+  },
+  {
+   "fieldname": "section_break_cta",
+   "fieldtype": "Section Break",
+   "label": "Call to action"
+  },
+  {
+   "description": "Text on the primary button. Leave blank to hide the button.",
+   "fieldname": "cta_label",
+   "fieldtype": "Data",
+   "label": "Button label"
+  },
+  {
+   "description": "Path or full URL the button leads to, e.g. /category/Sarees",
+   "fieldname": "cta_link",
+   "fieldtype": "Data",
+   "label": "Button link"
+  },
+  {
+   "fieldname": "section_break_media",
+   "fieldtype": "Section Break",
+   "label": "Banner image"
+  },
+  {
+   "description": "Shown to the right of the hero text on desktop. Recommended 3:4 or 4:5 ratio, public file.",
+   "fieldname": "image",
+   "fieldtype": "Attach Image",
+   "label": "Image"
+  },
+  {
+   "description": "Description for screen readers / SEO. Defaults to the headline if blank.",
+   "fieldname": "image_alt",
+   "fieldtype": "Data",
+   "label": "Image alt text"
+  }
+ ],
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-05-19 16:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Calicut Textiles",
+ "name": "Storefront Hero",
+ "naming_rule": "Expression (old style)",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Website Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "read": 1,
+   "role": "All"
+  }
+ ],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}
