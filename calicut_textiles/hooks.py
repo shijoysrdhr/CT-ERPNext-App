@@ -36,6 +36,7 @@ doctype_js = {"Purchase Receipt" : "public/purchase_recipt.js",
               "Sales Invoice" : "public/sales_invoice.js",
               "Sales Order" : "public/sales_order.js",
               "Employee Checkin" : "public/employee_checkin.js",
+              "Website Item" : "public/website_item.js",
               }
 
 doctype_list_js = {"Item" : "public/item_list.js",
