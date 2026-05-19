@@ -191,14 +191,26 @@ def _user_agent():
 
 
 def _send_otp_sms(phone, code):
-	"""Try the configured SMS gateway. On failure, fall back to logging the
-	OTP to the Error Log so admins can recover the code during setup."""
+	"""Try the configured SMS gateway. If SMS Settings isn't configured, or
+	the gateway throws, fall back to logging the OTP to the Error Log so an
+	admin can recover the code during setup."""
 	msg = f"Your Calicut Textiles login code is {code}. Valid for {OTP_VALIDITY_MINUTES} minutes."
+
+	gateway_url = frappe.db.get_single_value("SMS Settings", "sms_gateway_url")
+	if not gateway_url:
+		# Frappe's send_sms() silently msgprints when SMS Settings is empty
+		# instead of raising — so we'd never hit the except branch. Log
+		# explicitly so the OTP is recoverable during initial setup.
+		frappe.log_error(
+			title="Storefront OTP (SMS Settings empty — logging code)",
+			message=f"Phone: {phone}\nCode: {code}",
+		)
+		return
+
 	try:
 		from frappe.core.doctype.sms_settings.sms_settings import send_sms
 
 		send_sms([phone], msg)
-		return
 	except Exception as exc:
 		frappe.log_error(
 			title="Storefront OTP (SMS send failed — falling back to log)",
