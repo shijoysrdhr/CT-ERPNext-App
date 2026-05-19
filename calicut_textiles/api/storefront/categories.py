@@ -1,7 +1,9 @@
 """Storefront category API.
 
 Called from the Next.js storefront via `/api/method/calicut_textiles.api.storefront.categories.<verb>`.
-Response shapes must match the `Category` type in `src/lib/api/types.ts`.
+Backed by the `Website Item Group` doctype (a separate tree from the internal
+`Item Group` used for stock/accounting). Response shapes must match the
+`Category` type in `src/lib/api/types.ts`.
 """
 
 import frappe
@@ -10,42 +12,65 @@ from frappe import _
 
 @frappe.whitelist(allow_guest=True)
 def list(parent=None):
-	"""Return Item Groups that are flagged `show_in_website`.
-
-	If `parent` is provided, returns its direct children. Otherwise returns the
-	top-level (root) website-visible groups. Each entry includes `hasChildren`
-	so the storefront can render expandable menus without a second round-trip.
+	"""Return Website Item Groups, optionally filtered to direct children of
+	`parent`. Without `parent`, returns the top-level (root) groups. Each
+	entry includes `hasChildren` so the storefront can render expandable
+	menus without a second round-trip.
 	"""
-	filters = {"show_in_website": 1}
+	filters = {}
 	if parent:
-		filters["parent_item_group"] = parent
+		filters["parent_website_item_group"] = parent
 	else:
-		# Root level: parent_item_group is the All Item Groups root, or empty
-		root = frappe.db.get_value("Item Group", {"is_group": 1, "parent_item_group": ("in", ["", None])}, "name")
-		if root:
-			filters["parent_item_group"] = root
+		filters["parent_website_item_group"] = ("in", ["", None])
 
 	rows = frappe.get_all(
-		"Item Group",
+		"Website Item Group",
 		filters=filters,
-		fields=["name", "parent_item_group", "route", "image", "is_group"],
-		order_by="weightage DESC, name ASC",
+		fields=[
+			"name",
+			"parent_website_item_group",
+			"route",
+			"image",
+			"is_group",
+		],
+		order_by="weightage DESC, website_item_group_name ASC",
 	)
 	return [_serialize(row) for row in rows]
 
 
 @frappe.whitelist(allow_guest=True)
 def get(route):
-	"""Return a single Category by its route slug."""
+	"""Return a single Website Item Group by its route slug, or by name as a
+	fallback (so URLs like /category/Sarees resolve even when no explicit
+	route is set)."""
 	if not route:
 		frappe.throw(_("route is required"))
 
 	row = frappe.db.get_value(
-		"Item Group",
-		{"route": route, "show_in_website": 1},
-		["name", "parent_item_group", "route", "image", "is_group"],
+		"Website Item Group",
+		{"route": route},
+		[
+			"name",
+			"parent_website_item_group",
+			"route",
+			"image",
+			"is_group",
+		],
 		as_dict=True,
 	)
+	if not row and frappe.db.exists("Website Item Group", route):
+		row = frappe.db.get_value(
+			"Website Item Group",
+			route,
+			[
+				"name",
+				"parent_website_item_group",
+				"route",
+				"image",
+				"is_group",
+			],
+			as_dict=True,
+		)
 	if not row:
 		frappe.throw(_("Category not found: {0}").format(route), frappe.DoesNotExistError)
 	return _serialize(row)
@@ -54,7 +79,7 @@ def get(route):
 def _serialize(row):
 	return {
 		"name": row.name,
-		"parentName": row.parent_item_group or None,
+		"parentName": row.parent_website_item_group or None,
 		"route": row.route or "",
 		"imageUrl": row.image or None,
 		"hasChildren": bool(row.is_group),

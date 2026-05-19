@@ -255,18 +255,19 @@ def _related_batches(item_code, exclude_name):
 	]
 
 
-def _category_descendants(item_group):
-	"""Return the category and all its descendant Item Groups so filtering by
-	'Sarees' also returns products in 'Sarees > Silk', 'Sarees > Cotton', etc."""
+def _category_descendants(category):
+	"""Return the category and all its descendant Website Item Groups so
+	filtering by 'Sarees' also returns products in 'Sarees > Silk',
+	'Sarees > Cotton', etc."""
 	try:
 		descendants = frappe.get_all(
-			"Item Group",
-			filters={"name": ("descendants of", item_group)},
+			"Website Item Group",
+			filters={"name": ("descendants of", category)},
 			pluck="name",
 		)
 	except Exception:
 		descendants = []
-	return [item_group, *descendants] if descendants else [item_group]
+	return [category, *descendants] if descendants else [category]
 
 
 def _count_with_or(doctype, filters, or_filters):
