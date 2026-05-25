@@ -82,7 +82,7 @@ doctype_list_js = {"Item" : "public/item_list.js",
 # ------------
 
 # before_install = "calicut_textiles.install.before_install"
-# after_install = "calicut_textiles.install.after_install"
+after_install = "calicut_textiles.goshop.setup.after_install"
 
 # Uninstallation
 # ------------
@@ -131,7 +131,8 @@ doctype_list_js = {"Item" : "public/item_list.js",
 override_doctype_class = {
 	"Leave Encashment": "calicut_textiles.calicut_textiles.events.encashment.CustomLeaveEncashment",
     "Department": "calicut_textiles.calicut_textiles.events.department.CustomDepartment",
-    "Payroll Entry":"calicut_textiles.public.python.payroll_entry.CustomPayrollEntry"
+    "Payroll Entry":"calicut_textiles.public.python.payroll_entry.CustomPayrollEntry",
+    "Website Item": "calicut_textiles.goshop.overrides.website_item.CTWebsiteItem",
 }
 
 # Document Events

@@ -1,0 +1,117 @@
+{
+ "actions": [],
+ "allow_import": 1,
+ "allow_rename": 0,
+ "autoname": "field:slot",
+ "creation": "2026-05-22 09:30:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "slot",
+  "enabled",
+  "column_break_main",
+  "tone",
+  "speed",
+  "section_break_items",
+  "items"
+ ],
+ "fields": [
+  {
+   "description": "Where this marquee appears on the storefront. Each slot can have at most one record.",
+   "fieldname": "slot",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Slot",
+   "options": "Header\nSale Bar",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "default": "1",
+   "description": "Uncheck to hide this marquee without deleting it.",
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Enabled"
+  },
+  {
+   "fieldname": "column_break_main",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "Brand",
+   "description": "Brand = red background, white text. Muted = neutral background.",
+   "fieldname": "tone",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Tone",
+   "options": "Brand\nMuted"
+  },
+  {
+   "default": "Normal",
+   "description": "Scroll speed.",
+   "fieldname": "speed",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Speed",
+   "options": "Normal\nFast"
+  },
+  {
+   "fieldname": "section_break_items",
+   "fieldtype": "Section Break",
+   "label": "Items"
+  },
+  {
+   "description": "Each row is one scrolling line. Order in the table is the order shown on the storefront.",
+   "fieldname": "items",
+   "fieldtype": "Table",
+   "label": "Items",
+   "options": "Storefront Announcement Item",
+   "reqd": 1
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-05-22 09:30:00.000000",
+ "modified_by": "Administrator",
+ "module": "GOShop",
+ "name": "Storefront Announcement",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Item Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "read": 1,
+   "role": "All"
+  }
+ ],
+ "search_fields": "slot",
+ "show_name_in_global_search": 1,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

@@ -12,10 +12,10 @@ import json
 import frappe
 from frappe import _
 
-from calicut_textiles.calicut_textiles.doctype.storefront_shipping_zone.storefront_shipping_zone import (
+from calicut_textiles.goshop.doctype.storefront_shipping_zone.storefront_shipping_zone import (
 	resolve_rate,
 )
-from calicut_textiles.calicut_textiles.doctype.storefront_settings.storefront_settings import (
+from calicut_textiles.goshop.doctype.storefront_settings.storefront_settings import (
 	get_settings,
 )
 

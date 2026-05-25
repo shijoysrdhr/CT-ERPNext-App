@@ -2,6 +2,15 @@
  {
   "docstatus": 0,
   "doctype": "Workflow State",
+  "icon": "",
+  "modified": "2026-03-30 12:12:42.721221",
+  "name": "Submit for Approval",
+  "style": "",
+  "workflow_state_name": "Submit for Approval"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Workflow State",
   "icon": null,
   "modified": "2025-03-25 22:59:08.453950",
   "name": "Pending Approval",

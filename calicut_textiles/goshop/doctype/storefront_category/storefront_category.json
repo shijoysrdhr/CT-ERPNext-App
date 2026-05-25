@@ -10,6 +10,7 @@
   "storefront_category_name",
   "parent_storefront_category",
   "is_group",
+  "show_in_top_nav",
   "column_break_main",
   "weightage",
   "route",
@@ -43,6 +44,14 @@
    "fieldtype": "Check",
    "in_list_view": 1,
    "label": "Is Group"
+  },
+  {
+   "default": "0",
+   "description": "When checked, this category appears as a top-level button in the storefront navbar — regardless of its position in the category tree. Use for cross-cutting promotional categories like \"Sarees\" that also live under \"Women\".",
+   "fieldname": "show_in_top_nav",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Show in Top Nav"
   },
   {
    "fieldname": "column_break_main",
@@ -120,7 +129,7 @@
  "links": [],
  "modified": "2026-05-19 14:00:00.000000",
  "modified_by": "Administrator",
- "module": "Calicut Textiles",
+ "module": "GOShop",
  "name": "Storefront Category",
  "naming_rule": "By fieldname",
  "nsm_parent_field": "parent_storefront_category",

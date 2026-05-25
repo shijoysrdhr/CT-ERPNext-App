@@ -247,7 +247,7 @@ def _customer_defaults():
 	fallback_name = "Storefront Customer"
 
 	try:
-		from calicut_textiles.calicut_textiles.doctype.storefront_settings.storefront_settings import (
+		from calicut_textiles.goshop.doctype.storefront_settings.storefront_settings import (
 			get_settings,
 		)
 		settings = get_settings()

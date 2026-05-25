@@ -54,7 +54,10 @@ def list(
 	page_size = max(1, min(100, int(page_size or 24)))
 	order_by = _SORT_MAP.get(sort, _SORT_MAP["newest"])
 
-	filters = {"published": 1}
+	# `has_variants = 0` excludes Template Website Items (auto-created by
+	# webshop when a Variant is published) — they have no batch / stock and
+	# would otherwise appear as phantom products in the catalog.
+	filters = {"published": 1, "has_variants": 0}
 
 	if category:
 		category_names = _category_descendants(category)
@@ -118,7 +121,7 @@ def get(route):
 
 	row = frappe.db.get_value(
 		"Website Item",
-		{"route": route, "published": 1},
+		{"route": route, "published": 1, "has_variants": 0},
 		_PRODUCT_FIELDS + ["slideshow", "web_long_description", "description", "brand"],
 		as_dict=True,
 	)
@@ -127,7 +130,7 @@ def get(route):
 
 	product = _serialize_product(row)
 	product["description"] = row.web_long_description or row.description or ""
-	product["images"] = _slideshow_images(row.slideshow, fallback=row.website_image)
+	product["images"] = _gallery_images(row.name, row.slideshow, fallback=row.website_image)
 	product["attributes"] = _build_attributes(row)
 	product["relatedBatches"] = _related_batches(row.item_code, exclude_name=row.name)
 	return product
@@ -144,6 +147,7 @@ def list_featured(limit=8):
 		"Website Item",
 		filters={
 			"published": 1,
+			"has_variants": 0,
 			"custom_current_batch_qty": (">", 0),
 		},
 		fields=_PRODUCT_FIELDS,
@@ -186,38 +190,56 @@ def _stock_uom_for(item_code):
 	return uom
 
 
-def _slideshow_images(slideshow_name, fallback=None):
-	"""Build the product gallery: `website_image` first (matches the listing
-	card customers just clicked), then any Website Slideshow items in order,
-	deduped so the same file doesn't appear twice."""
+def _gallery_images(website_item_name, slideshow_name, fallback=None):
+	"""Build the product gallery as a list of `{url, alt}` dicts, deduped by url.
+	Priority order:
+	1. `website_image` (Thumbnail) — matches the listing card the customer
+	   just clicked. No alt — UI falls back to the product title.
+	2. Rows from the `custom_images` child table — the new editor-friendly
+	   way to add extra photos, with optional per-image alt text.
+	3. Legacy Website Slideshow items — `heading` reused as alt."""
 	images = []
-	if fallback:
-		images.append(fallback)
+	seen = set()
+
+	def push(url, alt=None):
+		if not url or url in seen:
+			return
+		seen.add(url)
+		images.append({"url": url, "alt": alt or None})
+
+	push(fallback)
+	if website_item_name:
+		rows = frappe.get_all(
+			"Website Item Image",
+			filters={"parent": website_item_name, "parenttype": "Website Item"},
+			fields=["image", "alt_text"],
+			order_by="idx ASC",
+		)
+		for r in rows:
+			push(r.image, r.alt_text)
 	if slideshow_name:
 		rows = frappe.get_all(
 			"Website Slideshow Item",
 			filters={"parent": slideshow_name},
-			fields=["image"],
+			fields=["image", "heading"],
 			order_by="idx ASC",
 		)
 		for r in rows:
-			if r.image and r.image not in images:
-				images.append(r.image)
+			push(r.image, r.heading)
 	return images
 
 
 def _build_attributes(row):
 	"""Start small — just the obvious spec fields. Enrich later from
-	Item Attribute Values if/when the storefront needs filterable specs."""
+	Item Attribute Values if/when the storefront needs filterable specs.
+	`uom` is already surfaced on the page next to the stock count, so we
+	don't include it in the spec table to avoid duplication."""
 	attrs = {}
 	if row.brand:
 		attrs["Brand"] = row.brand
 	category = row.get("custom_storefront_category") or row.item_group
 	if category:
 		attrs["Category"] = category
-	uom = _stock_uom_for(row.item_code)
-	if uom:
-		attrs["Unit"] = uom
 	return attrs
 
 
@@ -231,6 +253,7 @@ def _related_batches(item_code, exclude_name):
 		filters={
 			"item_code": item_code,
 			"published": 1,
+			"has_variants": 0,
 			"name": ("!=", exclude_name),
 		},
 		fields=[
