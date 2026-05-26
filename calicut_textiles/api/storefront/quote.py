@@ -79,6 +79,7 @@ def _price_lines(parsed):
 			"name",
 			"item_code",
 			"custom_batch_no",
+			"custom_is_standard",
 			"web_item_name",
 			"custom_webshop_price",
 			"custom_current_batch_qty",
@@ -93,7 +94,15 @@ def _price_lines(parsed):
 		row = by_name.get(p["productName"])
 		if not row:
 			frappe.throw(_("Product is no longer available: {0}").format(p["productName"]))
-		qty = min(p["qty"], int(row.custom_current_batch_qty or 0))
+		# Standard items aggregate stock across all batches of the underlying
+		# Item; one-off items stay scoped to their single batch.
+		if row.get("custom_is_standard"):
+			available = _aggregate_item_stock(row.item_code)
+			batch_no = ""
+		else:
+			available = float(row.custom_current_batch_qty or 0)
+			batch_no = row.custom_batch_no or ""
+		qty = min(p["qty"], int(available))
 		if qty <= 0:
 			frappe.throw(_("Out of stock: {0}").format(row.web_item_name or row.name))
 		price = float(row.custom_webshop_price or 0)
@@ -101,17 +110,31 @@ def _price_lines(parsed):
 		lines.append({
 			"productName": row.name,
 			"itemCode": row.item_code or "",
-			"batchNo": row.custom_batch_no or "",
+			"batchNo": batch_no,
 			"title": row.web_item_name or row.name,
 			"qty": qty,
 			"price": price,
 			"lineTotal": line_total,
 			"imageUrl": row.website_image or None,
-			"stockQty": float(row.custom_current_batch_qty or 0),
+			"stockQty": available,
 		})
 		subtotal += line_total
 
 	return lines, subtotal
+
+
+def _aggregate_item_stock(item_code):
+	"""Sum stock across all Bin rows (warehouse × item) for the given Item.
+	Mirrors `products._aggregate_item_stock` — kept inline to avoid a circular
+	import between the two storefront modules."""
+	if not item_code:
+		return 0.0
+	rows = frappe.get_all(
+		"Bin",
+		filters={"item_code": item_code},
+		fields=["actual_qty"],
+	)
+	return sum(float(r.actual_qty or 0) for r in rows)
 
 
 def _estimate_tax(taxable_amount):

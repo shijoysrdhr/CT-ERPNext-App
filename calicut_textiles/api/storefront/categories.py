@@ -11,7 +11,7 @@ from frappe import _
 
 
 @frappe.whitelist(allow_guest=True)
-def list(parent=None, include_children=None, top_nav_only=None):
+def list(parent=None, include_children=None, top_nav_only=None, in_collections_only=None):
 	"""Return Storefront Categories, optionally filtered to direct children of
 	`parent`. Without `parent`, returns the top-level (root) categories. Each
 	entry includes `hasChildren` so the storefront can render expandable
@@ -26,9 +26,15 @@ def list(parent=None, include_children=None, top_nav_only=None):
 	the response includes every category flagged `show_in_top_nav=1`,
 	regardless of tree depth. This lets the storefront promote a sub-category
 	(e.g. "Sarees" living under "Women") to a top-level navbar button.
+
+	If `in_collections_only` is truthy, the response includes every category
+	flagged `show_in_collections=1` — the editor-curated tiles for the home
+	page "Our Collections" grid. Mutually exclusive with `top_nav_only`.
 	"""
 	filters = {}
-	if _truthy(top_nav_only):
+	if _truthy(in_collections_only):
+		filters["show_in_collections"] = 1
+	elif _truthy(top_nav_only):
 		filters["show_in_top_nav"] = 1
 	elif parent:
 		filters["parent_storefront_category"] = parent

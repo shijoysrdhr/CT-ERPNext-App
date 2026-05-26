@@ -29,6 +29,20 @@ from calicut_textiles.goshop.doctype.storefront_shipping_zone.storefront_shippin
 from calicut_textiles.api.storefront.payments import verify_signature
 
 
+def _aggregate_item_stock(item_code):
+	"""Sum `actual_qty` across all Bin rows (warehouse × item) for the given
+	Item — stock-on-hand at the Item level, ignoring batch. Mirrors the helper
+	in `products` / `quote`; kept here to avoid circular imports."""
+	if not item_code:
+		return 0
+	rows = frappe.get_all(
+		"Bin",
+		filters={"item_code": item_code},
+		fields=["actual_qty"],
+	)
+	return int(sum(float(r.actual_qty or 0) for r in rows))
+
+
 @frappe.whitelist(allow_guest=True, methods=["POST"])
 def place_order(items, contact, address, payment):
 	"""Place a guest storefront order.
@@ -177,13 +191,28 @@ def _create_sales_invoice(customer, lines, address, contact, payment, settings):
 		row = frappe.db.get_value(
 			"Website Item",
 			{"name": entry.get("productName"), "published": 1},
-			["item_code", "custom_batch_no", "custom_webshop_price", "custom_current_batch_qty", "web_item_name"],
+			[
+				"item_code",
+				"custom_batch_no",
+				"custom_is_standard",
+				"custom_webshop_price",
+				"custom_current_batch_qty",
+				"web_item_name",
+			],
 			as_dict=True,
 		)
 		if not row:
 			frappe.throw(_("Product not available: {0}").format(entry.get("productName")))
 		qty = int(entry.get("qty") or 0)
-		if qty <= 0 or qty > int(row.custom_current_batch_qty or 0):
+		# Standard items: stock aggregated across all batches; ERPNext picks
+		# the actual batch on submit via Auto Batch Selection (FIFO).
+		if row.custom_is_standard:
+			available = _aggregate_item_stock(row.item_code)
+			batch_no = None
+		else:
+			available = int(row.custom_current_batch_qty or 0)
+			batch_no = row.custom_batch_no
+		if qty <= 0 or qty > available:
 			frappe.throw(_("Not enough stock for {0}").format(row.web_item_name or row.item_code))
 		rate = float(row.custom_webshop_price or 0)
 		si.append("items", {
@@ -191,7 +220,7 @@ def _create_sales_invoice(customer, lines, address, contact, payment, settings):
 			"item_name": row.web_item_name,
 			"qty": qty,
 			"rate": rate,
-			"batch_no": row.custom_batch_no,
+			"batch_no": batch_no,
 			"warehouse": settings.default_warehouse,
 		})
 		subtotal += rate * qty

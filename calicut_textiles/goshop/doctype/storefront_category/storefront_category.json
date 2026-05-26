@@ -11,6 +11,7 @@
   "parent_storefront_category",
   "is_group",
   "show_in_top_nav",
+  "show_in_collections",
   "column_break_main",
   "weightage",
   "route",
@@ -52,6 +53,14 @@
    "fieldtype": "Check",
    "in_list_view": 1,
    "label": "Show in Top Nav"
+  },
+  {
+   "default": "0",
+   "description": "When checked, this category is featured as a tile in the home-page \"Our Collections\" grid. Independent of tree position and Top Nav — curate ~6–10 tiles via this flag.",
+   "fieldname": "show_in_collections",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Show in Collections"
   },
   {
    "fieldname": "column_break_main",

@@ -17,6 +17,7 @@ _PRODUCT_FIELDS = [
 	"name",
 	"item_code",
 	"custom_batch_no",
+	"custom_is_standard",
 	"web_item_name",
 	"short_description",
 	"item_group",
@@ -76,8 +77,16 @@ def list(
 		else:
 			filters["custom_webshop_price"] = ("<=", float(max_price))
 
+	# Stock filter: standard items pull qty from Bin at serialize time, so the
+	# per-batch column doesn't gate them — combine via OR with a search-style
+	# `or_filters` list. (When `search` is also present, the search OR wins and
+	# the stock gate is dropped — the UI's StockBadge shows "Sold out" per card.)
+	stock_or = None
 	if _truthy(in_stock_only):
-		filters["custom_current_batch_qty"] = (">", 0)
+		stock_or = [
+			["custom_is_standard", "=", 1],
+			["custom_current_batch_qty", ">", 0],
+		]
 
 	or_filters = None
 	if search:
@@ -87,6 +96,8 @@ def list(
 			["custom_batch_no", "like", needle],
 			["item_code", "like", needle],
 		]
+	elif stock_or:
+		or_filters = stock_or
 
 	total = frappe.db.count("Website Item", filters=filters)
 	# Frappe's count() ignores or_filters; apply the same OR manually when needed.
@@ -138,42 +149,101 @@ def get(route):
 
 @frappe.whitelist(allow_guest=True)
 def list_featured(limit=8):
-	"""Return up to `limit` featured Website Items — newest published items with
-	stock on hand. (Website Item has no weightage column; if we want curated
-	ordering later, add a `custom_featured` Check field and sort by it first.)"""
+	"""Return up to `limit` items for the home page "NEW ARRIVAL" section.
+
+	Strategy: editor-curated first (items flagged `custom_show_in_new_arrival`),
+	newest-in-stock as fallback when fewer than `limit` are ticked — so the
+	section never goes empty during normal merchandising.
+
+	Stock filter is standard-aware: items with `custom_is_standard=1` aggregate
+	their stock from Bin at serialize time, so they pass the gate regardless of
+	`custom_current_batch_qty`.
+	"""
 	limit = max(1, min(50, int(limit or 8)))
 
-	rows = frappe.get_all(
+	base_filters = {"published": 1, "has_variants": 0}
+	stock_or = [
+		["custom_is_standard", "=", 1],
+		["custom_current_batch_qty", ">", 0],
+	]
+
+	# Pass 1 — editor-curated picks.
+	curated = frappe.get_all(
 		"Website Item",
-		filters={
-			"published": 1,
-			"has_variants": 0,
-			"custom_current_batch_qty": (">", 0),
-		},
+		filters={**base_filters, "custom_show_in_new_arrival": 1},
+		or_filters=stock_or,
 		fields=_PRODUCT_FIELDS,
 		order_by="creation DESC",
 		page_length=limit,
 	)
-	return [_serialize_product(row) for row in rows]
+
+	if len(curated) >= limit:
+		return [_serialize_product(row) for row in curated[:limit]]
+
+	# Pass 2 — top up with newest in-stock items not already curated.
+	exclude = [r.name for r in curated]
+	fallback_filters = {**base_filters}
+	if exclude:
+		fallback_filters["name"] = ("not in", exclude)
+	fallback = frappe.get_all(
+		"Website Item",
+		filters=fallback_filters,
+		or_filters=stock_or,
+		fields=_PRODUCT_FIELDS,
+		order_by="creation DESC",
+		page_length=limit - len(curated),
+	)
+	return [_serialize_product(row) for row in (curated + fallback)]
 
 
 def _serialize_product(row):
 	# Storefront category takes precedence — falls back to internal item_group
 	# if the field isn't set yet on a given Website Item (transition period).
 	storefront_category = row.get("custom_storefront_category") or row.item_group or ""
+	is_standard = bool(row.get("custom_is_standard"))
+	# Standard items show stock aggregated across all batches of the underlying
+	# Item (continuous-supply SKUs); one-off batches stay batch-scoped.
+	if is_standard:
+		stock_qty = _aggregate_item_stock(row.item_code)
+		batch_no = ""
+	else:
+		stock_qty = float(row.custom_current_batch_qty or 0)
+		batch_no = row.custom_batch_no or ""
 	return {
 		"name": row.name,
 		"itemCode": row.item_code or "",
-		"batchNo": row.custom_batch_no or "",
+		"batchNo": batch_no,
+		"isStandard": is_standard,
 		"title": row.web_item_name or row.name,
 		"shortDescription": row.short_description or None,
 		"itemGroup": storefront_category,
 		"route": row.route or "",
 		"price": float(row.custom_webshop_price or 0),
 		"uom": _stock_uom_for(row.item_code),
-		"stockQty": float(row.custom_current_batch_qty or 0),
+		"stockQty": stock_qty,
 		"imageUrl": row.website_image or None,
 	}
+
+
+_AGGREGATE_STOCK_CACHE = {}
+
+
+def _aggregate_item_stock(item_code):
+	"""Sum `actual_qty` across all Bin rows (warehouse × batch) for the given
+	Item — i.e. stock-on-hand at the Item level, irrespective of batch. Cached
+	per-request to keep a 24-item listing from firing 24 SUMs."""
+	if not item_code:
+		return 0.0
+	if item_code in _AGGREGATE_STOCK_CACHE:
+		return _AGGREGATE_STOCK_CACHE[item_code]
+	rows = frappe.get_all(
+		"Bin",
+		filters={"item_code": item_code},
+		fields=["actual_qty"],
+	)
+	qty = sum(float(r.actual_qty or 0) for r in rows)
+	_AGGREGATE_STOCK_CACHE[item_code] = qty
+	return qty
 
 
 _UOM_CACHE = {}
