@@ -358,7 +358,7 @@ def require_customer():
 
 
 # ---------------------------------------------------------------------------
-# Firebase Phone Auth
+# Firebase Auth (phone / Google / email)
 # ---------------------------------------------------------------------------
 
 _FIREBASE_CERTS_URL = (
@@ -373,27 +373,80 @@ _FIREBASE_DEFAULT_PROJECT_ID = "ct-shop-sms-otp"
 def firebase_login(id_token):
 	"""Exchange a verified Firebase ID token for a Storefront session.
 
-	The storefront verifies the customer's phone via Firebase Phone Auth and
-	posts us the resulting Firebase ID token. We verify the token's signature
-	against Google's public certificates (no service-account secret needed),
-	confirm it was minted for our Firebase project, read the phone number, and
-	reuse the same get-or-create-customer + create-session path as `verify_otp`.
+	The storefront verifies the customer via Firebase (phone OTP, Google, or
+	email magic-link) and posts us the resulting ID token. We verify the token's
+	signature against Google's public certificates (no service-account secret
+	needed) and confirm it was minted for our project, then resolve the Customer
+	by whichever *verified* identifier the token carries — phone or email —
+	linking both onto one record where possible.
 	"""
 	claims = _verify_firebase_token(id_token)
 
 	phone = claims.get("phone_number")
-	if not phone:
-		frappe.throw(_("This sign-in has no phone number"), frappe.AuthenticationError)
-	phone = _normalise_phone(phone)
+	if phone:
+		phone = _normalise_phone(phone)
 
-	customer = _get_or_create_customer_by_phone(phone)
-	token, session_name = _create_session(customer, phone)
+	# Only trust the email as an identity when Firebase marks it verified
+	# (Google = always; email magic-link = yes; password/other can be false) —
+	# otherwise an unverified email could be used to hijack an existing account.
+	email = claims.get("email")
+	if email and not claims.get("email_verified"):
+		email = None
+	if email:
+		email = email.strip().lower()
+
+	if not phone and not email:
+		frappe.throw(
+			_("This sign-in didn't provide a verified phone or email"),
+			frappe.AuthenticationError,
+		)
+
+	customer = _resolve_customer(phone=phone, email=email, name=claims.get("name"))
+	token, session_name = _create_session(customer, phone or "")
 
 	return {
 		"token": token,
 		"customer": _serialize_customer(customer),
 		"sessionName": session_name,
 	}
+
+
+def _resolve_customer(phone=None, email=None, name=None):
+	"""Find or create the Customer for a set of *verified* identifiers, keeping a
+	single record per person. Matches by `mobile_no`, then `email_id`; when a
+	match is found, backfills whichever identifier it was missing so phone and
+	email logins converge onto one Customer."""
+	existing = None
+	if phone:
+		existing = frappe.db.get_value("Customer", {"mobile_no": phone}, "name")
+	if not existing and email:
+		existing = frappe.db.get_value("Customer", {"email_id": email}, "name")
+
+	if existing:
+		current = frappe.db.get_value(
+			"Customer", existing, ["mobile_no", "email_id"], as_dict=True
+		)
+		updates = {}
+		if phone and not current.mobile_no:
+			updates["mobile_no"] = phone
+		if email and not current.email_id:
+			updates["email_id"] = email
+		if updates:
+			frappe.db.set_value("Customer", existing, updates)
+		return existing
+
+	customer_group, territory, fallback_name = _customer_defaults()
+	doc = frappe.new_doc("Customer")
+	doc.customer_name = name or fallback_name
+	doc.customer_type = "Individual"
+	doc.customer_group = customer_group
+	doc.territory = territory
+	if phone:
+		doc.mobile_no = phone
+	if email:
+		doc.email_id = email
+	doc.insert(ignore_permissions=True)
+	return doc.name
 
 
 def _firebase_project_id():
