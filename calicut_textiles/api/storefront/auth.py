@@ -1,10 +1,18 @@
 """Phone-OTP authentication for the storefront.
 
-Three public methods:
-  - request_otp(phone)            — generate + SMS a 6-digit OTP
+Public methods:
+  - request_otp(phone)            — generate + SMS a 6-digit OTP (legacy path)
   - verify_otp(phone, otp)        — exchange OTP for a session token + customer
+  - firebase_login(id_token)      — exchange a verified Firebase ID token for a
+                                    session (Firebase Phone Auth delivers the SMS)
   - me()                          — resolve the current session token to a customer
   - logout()                      — delete the current session
+
+The OTP *delivery* runs through Firebase Phone Auth (the storefront verifies the
+phone client-side and posts the Firebase ID token to `firebase_login`). The
+self-hosted `request_otp`/`verify_otp` pair is retained as a fallback. Either way
+the result is the same `Storefront Session` token, so the rest of the API is
+agnostic to how the phone was proven.
 
 Session tokens come in via the `X-Storefront-Token` HTTP header (or the
 `storefront_token` form param as a fallback for environments that strip
@@ -347,3 +355,118 @@ def require_customer():
 		update_modified=False,
 	)
 	return session.customer
+
+
+# ---------------------------------------------------------------------------
+# Firebase Phone Auth
+# ---------------------------------------------------------------------------
+
+_FIREBASE_CERTS_URL = (
+	"https://www.googleapis.com/robot/v1/metadata/x509/"
+	"securetoken@system.gserviceaccount.com"
+)
+_FIREBASE_CERTS_CACHE_KEY = "firebase_securetoken_certs"
+_FIREBASE_DEFAULT_PROJECT_ID = "ct-shop-sms-otp"
+
+
+@frappe.whitelist(allow_guest=True, methods=["POST"])
+def firebase_login(id_token):
+	"""Exchange a verified Firebase ID token for a Storefront session.
+
+	The storefront verifies the customer's phone via Firebase Phone Auth and
+	posts us the resulting Firebase ID token. We verify the token's signature
+	against Google's public certificates (no service-account secret needed),
+	confirm it was minted for our Firebase project, read the phone number, and
+	reuse the same get-or-create-customer + create-session path as `verify_otp`.
+	"""
+	claims = _verify_firebase_token(id_token)
+
+	phone = claims.get("phone_number")
+	if not phone:
+		frappe.throw(_("This sign-in has no phone number"), frappe.AuthenticationError)
+	phone = _normalise_phone(phone)
+
+	customer = _get_or_create_customer_by_phone(phone)
+	token, session_name = _create_session(customer, phone)
+
+	return {
+		"token": token,
+		"customer": _serialize_customer(customer),
+		"sessionName": session_name,
+	}
+
+
+def _firebase_project_id():
+	# Overridable per-site so prod can point at its own Firebase project.
+	return frappe.conf.get("firebase_project_id") or _FIREBASE_DEFAULT_PROJECT_ID
+
+
+def _firebase_public_certs(force=False):
+	"""Google's x509 signing certs, keyed by `kid`. Cached ~1h to avoid
+	fetching on every login; refreshed on demand when a kid is missing."""
+	cache = frappe.cache()
+	if not force:
+		cached = cache.get_value(_FIREBASE_CERTS_CACHE_KEY)
+		if cached:
+			return cached
+
+	import requests
+
+	resp = requests.get(_FIREBASE_CERTS_URL, timeout=10)
+	resp.raise_for_status()
+	certs = resp.json()  # {kid: "-----BEGIN CERTIFICATE-----\n..."}
+	cache.set_value(_FIREBASE_CERTS_CACHE_KEY, certs, expires_in_sec=3600)
+	return certs
+
+
+def _verify_firebase_token(id_token):
+	"""Verify a Firebase ID token and return its claims, or raise
+	AuthenticationError. Checks RS256 signature against Google's certs plus the
+	audience (our project) and issuer."""
+	try:
+		import jwt
+		from cryptography.x509 import load_pem_x509_certificate
+	except ImportError:
+		frappe.throw(_("pyjwt[crypto] is not installed on the bench"))
+
+	id_token = (id_token or "").strip()
+	if not id_token:
+		frappe.throw(_("Missing sign-in token"), frappe.AuthenticationError)
+
+	project_id = _firebase_project_id()
+
+	try:
+		kid = jwt.get_unverified_header(id_token).get("kid")
+	except Exception:
+		frappe.throw(_("Invalid sign-in token"), frappe.AuthenticationError)
+
+	certs = _firebase_public_certs()
+	cert_pem = certs.get(kid)
+	if not cert_pem:
+		# Cache may be stale (Google rotated keys); refresh once and retry.
+		certs = _firebase_public_certs(force=True)
+		cert_pem = certs.get(kid)
+	if not cert_pem:
+		frappe.throw(_("Unknown sign-in signing key"), frappe.AuthenticationError)
+
+	public_key = load_pem_x509_certificate(cert_pem.encode()).public_key()
+
+	try:
+		claims = jwt.decode(
+			id_token,
+			public_key,
+			algorithms=["RS256"],
+			audience=project_id,
+			issuer=f"https://securetoken.google.com/{project_id}",
+		)
+	except Exception as exc:
+		frappe.log_error(
+			title="Firebase token verification failed", message=str(exc)
+		)
+		frappe.throw(_("Could not verify your sign-in"), frappe.AuthenticationError)
+
+	# Firebase ID tokens must carry a non-empty subject (the Firebase UID).
+	if not claims.get("sub"):
+		frappe.throw(_("Invalid sign-in token"), frappe.AuthenticationError)
+
+	return claims
