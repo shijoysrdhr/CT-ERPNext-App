@@ -131,3 +131,169 @@ def get_order(invoice):
 			for t in taxes
 		],
 	}
+
+
+# ---------------------------------------------------------------------------
+# Saved addresses (ERPNext Address, linked to the Customer via Dynamic Link)
+# ---------------------------------------------------------------------------
+
+
+@frappe.whitelist(allow_guest=True)
+def list_addresses():
+	"""Return the signed-in customer's saved addresses, default first."""
+	customer = require_customer()
+	rows = _customer_addresses(customer)
+	return [_serialize_address(r) for r in rows]
+
+
+@frappe.whitelist(allow_guest=True, methods=["POST"])
+def save_address(
+	name=None,
+	label=None,
+	line1=None,
+	line2=None,
+	city=None,
+	state=None,
+	pincode=None,
+	phone=None,
+	is_default=0,
+):
+	"""Create or update an address for the signed-in customer. Pass `name` to
+	edit an existing one (ownership is enforced)."""
+	customer = require_customer()
+	line1 = (line1 or "").strip()
+	city = (city or "").strip()
+	if not line1 or not city:
+		frappe.throw(_("Address line 1 and city are required"))
+
+	if name:
+		_assert_owns_address(name, customer)
+		doc = frappe.get_doc("Address", name)
+	else:
+		doc = frappe.new_doc("Address")
+		doc.address_type = "Shipping"
+		doc.append("links", {"link_doctype": "Customer", "link_name": customer})
+
+	doc.address_title = (label or "").strip() or _customer_title(customer)
+	doc.address_line1 = line1
+	doc.address_line2 = (line2 or "").strip()
+	doc.city = city
+	doc.state = (state or "").strip()
+	doc.pincode = (pincode or "").strip()
+	doc.phone = (phone or "").strip()
+	if not doc.country:
+		doc.country = frappe.db.get_default("country") or "India"
+	doc.save(ignore_permissions=True)
+
+	if _truthy(is_default):
+		_set_default(doc.name, customer)
+
+	return _serialize_address(_address_row(doc.name))
+
+
+@frappe.whitelist(allow_guest=True, methods=["POST"])
+def delete_address(name):
+	"""Delete one of the signed-in customer's addresses."""
+	customer = require_customer()
+	_assert_owns_address(name, customer)
+	try:
+		frappe.delete_doc("Address", name, ignore_permissions=True)
+	except frappe.LinkExistsError:
+		frappe.throw(
+			_("This address is used on an existing order and can't be deleted.")
+		)
+	return {"ok": True}
+
+
+@frappe.whitelist(allow_guest=True, methods=["POST"])
+def set_default_address(name):
+	"""Mark one of the signed-in customer's addresses as the default."""
+	customer = require_customer()
+	_assert_owns_address(name, customer)
+	_set_default(name, customer)
+	return {"ok": True}
+
+
+# --- address internals -----------------------------------------------------
+
+_ADDRESS_FIELDS = [
+	"name",
+	"address_title",
+	"address_line1",
+	"address_line2",
+	"city",
+	"state",
+	"pincode",
+	"phone",
+	"is_primary_address",
+]
+
+
+def _customer_addresses(customer):
+	return frappe.get_all(
+		"Address",
+		filters=[
+			["Dynamic Link", "link_doctype", "=", "Customer"],
+			["Dynamic Link", "link_name", "=", customer],
+		],
+		fields=_ADDRESS_FIELDS,
+		order_by="is_primary_address DESC, modified DESC",
+	)
+
+
+def _address_row(name):
+	rows = frappe.get_all("Address", filters={"name": name}, fields=_ADDRESS_FIELDS)
+	return rows[0] if rows else None
+
+
+def _assert_owns_address(name, customer):
+	owns = frappe.db.exists(
+		"Dynamic Link",
+		{
+			"parenttype": "Address",
+			"parent": name,
+			"link_doctype": "Customer",
+			"link_name": customer,
+		},
+	)
+	if not owns:
+		frappe.throw(_("Address not found"), frappe.DoesNotExistError)
+
+
+def _set_default(name, customer):
+	for addr in frappe.get_all(
+		"Address",
+		filters=[
+			["Dynamic Link", "link_doctype", "=", "Customer"],
+			["Dynamic Link", "link_name", "=", customer],
+		],
+		pluck="name",
+	):
+		frappe.db.set_value(
+			"Address", addr, "is_primary_address", 1 if addr == name else 0,
+			update_modified=False,
+		)
+
+
+def _customer_title(customer):
+	return frappe.db.get_value("Customer", customer, "customer_name") or customer
+
+
+def _truthy(value):
+	return str(value).strip().lower() in ("1", "true", "yes", "on")
+
+
+def _serialize_address(r):
+	if not r:
+		return None
+	return {
+		"id": r.name,
+		"label": r.address_title or "",
+		"line1": r.address_line1 or "",
+		"line2": r.address_line2 or "",
+		"city": r.city or "",
+		"state": r.state or "",
+		"pincode": r.pincode or "",
+		"phone": r.phone or "",
+		"isDefault": bool(r.is_primary_address),
+	}
