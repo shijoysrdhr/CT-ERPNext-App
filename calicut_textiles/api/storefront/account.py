@@ -229,15 +229,29 @@ _ADDRESS_FIELDS = [
 ]
 
 
+def _customer_address_names(customer):
+	"""Address names linked to this customer — read straight from the Dynamic
+	Link table so no join is involved (avoids ambiguous-column errors)."""
+	return frappe.get_all(
+		"Dynamic Link",
+		filters={
+			"parenttype": "Address",
+			"link_doctype": "Customer",
+			"link_name": customer,
+		},
+		pluck="parent",
+	)
+
+
 def _customer_addresses(customer):
+	names = _customer_address_names(customer)
+	if not names:
+		return []
 	return frappe.get_all(
 		"Address",
-		filters=[
-			["Dynamic Link", "link_doctype", "=", "Customer"],
-			["Dynamic Link", "link_name", "=", customer],
-		],
+		filters={"name": ("in", names)},
 		fields=_ADDRESS_FIELDS,
-		order_by="is_primary_address DESC, modified DESC",
+		order_by="is_primary_address desc, modified desc",
 	)
 
 
@@ -261,14 +275,7 @@ def _assert_owns_address(name, customer):
 
 
 def _set_default(name, customer):
-	for addr in frappe.get_all(
-		"Address",
-		filters=[
-			["Dynamic Link", "link_doctype", "=", "Customer"],
-			["Dynamic Link", "link_name", "=", customer],
-		],
-		pluck="name",
-	):
+	for addr in _customer_address_names(customer):
 		frappe.db.set_value(
 			"Address", addr, "is_primary_address", 1 if addr == name else 0,
 			update_modified=False,
