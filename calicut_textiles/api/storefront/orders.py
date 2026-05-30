@@ -50,7 +50,7 @@ def place_order(items, contact, address, payment):
 	Args (all JSON strings or dicts):
 	    items: [{ productName, qty }]
 	    contact: { name, email, phone }
-	    address: { line1, line2, city, state, pincode, country }
+	    address: { line1, line2 (post office), city, district, state, pincode, country }
 	    payment: { razorpayOrderId, razorpayPaymentId, razorpaySignature }
 	"""
 	parsed = _parse(items, contact, address, payment)
@@ -160,8 +160,9 @@ def _attach_address(customer, contact, address):
 	doc.address_title = contact.get("name") or customer
 	doc.address_type = "Shipping"
 	doc.address_line1 = address.get("line1")
-	doc.address_line2 = address.get("line2") or ""
+	doc.address_line2 = address.get("line2") or ""  # Post Office
 	doc.city = address.get("city") or ""
+	doc.county = address.get("district") or ""
 	doc.state = address.get("state") or ""
 	doc.pincode = address.get("pincode") or ""
 	doc.country = address.get("country") or "India"

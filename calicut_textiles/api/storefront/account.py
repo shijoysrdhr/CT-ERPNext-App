@@ -149,22 +149,25 @@ def list_addresses():
 @frappe.whitelist(allow_guest=True, methods=["POST"])
 def save_address(
 	name=None,
-	label=None,
+	full_name=None,
 	line1=None,
 	line2=None,
 	city=None,
+	district=None,
 	state=None,
 	pincode=None,
 	phone=None,
+	email=None,
 	is_default=0,
 ):
 	"""Create or update an address for the signed-in customer. Pass `name` to
-	edit an existing one (ownership is enforced)."""
+	edit an existing one (ownership is enforced). `line2` carries the Post
+	Office; `district` maps to the Address `county` field (CRM-aligned schema)."""
 	customer = require_customer()
 	line1 = (line1 or "").strip()
 	city = (city or "").strip()
 	if not line1 or not city:
-		frappe.throw(_("Address line 1 and city are required"))
+		frappe.throw(_("Address and city are required"))
 
 	if name:
 		_assert_owns_address(name, customer)
@@ -174,13 +177,15 @@ def save_address(
 		doc.address_type = "Shipping"
 		doc.append("links", {"link_doctype": "Customer", "link_name": customer})
 
-	doc.address_title = (label or "").strip() or _customer_title(customer)
+	doc.address_title = (full_name or "").strip() or _customer_title(customer)
 	doc.address_line1 = line1
 	doc.address_line2 = (line2 or "").strip()
 	doc.city = city
+	doc.county = (district or "").strip()
 	doc.state = (state or "").strip()
 	doc.pincode = (pincode or "").strip()
 	doc.phone = (phone or "").strip()
+	doc.email_id = (email or "").strip()
 	if not doc.country:
 		doc.country = frappe.db.get_default("country") or "India"
 	doc.save(ignore_permissions=True)
@@ -222,9 +227,11 @@ _ADDRESS_FIELDS = [
 	"address_line1",
 	"address_line2",
 	"city",
+	"county",
 	"state",
 	"pincode",
 	"phone",
+	"email_id",
 	"is_primary_address",
 ]
 
@@ -295,12 +302,14 @@ def _serialize_address(r):
 		return None
 	return {
 		"id": r.name,
-		"label": r.address_title or "",
+		"fullName": r.address_title or "",
 		"line1": r.address_line1 or "",
 		"line2": r.address_line2 or "",
 		"city": r.city or "",
+		"district": r.county or "",
 		"state": r.state or "",
 		"pincode": r.pincode or "",
 		"phone": r.phone or "",
+		"email": r.email_id or "",
 		"isDefault": bool(r.is_primary_address),
 	}
