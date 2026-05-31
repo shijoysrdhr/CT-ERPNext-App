@@ -192,9 +192,15 @@ def save_address(
 
 	if _truthy(is_default):
 		_set_default(doc.name, customer)
-
-	# Complete the Customer's contact info from this address when it's blank.
-	backfill_customer_contact(customer, phone=doc.phone, email=doc.email_id)
+		# The default address represents the account holder, so keep the
+		# Customer's mobile_no in sync with it (overwrite). Email stays
+		# fill-if-blank — it's the login identity, not a per-address detail.
+		if doc.phone:
+			frappe.db.set_value("Customer", customer, "mobile_no", doc.phone)
+		backfill_customer_contact(customer, email=doc.email_id)
+	else:
+		# Non-default address: only complete blank Customer contact fields.
+		backfill_customer_contact(customer, phone=doc.phone, email=doc.email_id)
 
 	return _serialize_address(_address_row(doc.name))
 
@@ -215,10 +221,14 @@ def delete_address(name):
 
 @frappe.whitelist(allow_guest=True, methods=["POST"])
 def set_default_address(name):
-	"""Mark one of the signed-in customer's addresses as the default."""
+	"""Mark one of the signed-in customer's addresses as the default, and sync
+	the Customer's mobile_no to the new default's phone."""
 	customer = require_customer()
 	_assert_owns_address(name, customer)
 	_set_default(name, customer)
+	row = _address_row(name)
+	if row and row.phone:
+		frappe.db.set_value("Customer", customer, "mobile_no", row.phone)
 	return {"ok": True}
 
 
