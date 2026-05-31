@@ -126,18 +126,22 @@ def _parse(items, contact, address, payment):
 
 
 def _get_or_create_customer(contact, settings):
-	"""Look up by email or phone — if both miss, create a new Customer."""
+	"""Look up by email or phone — if both miss, create a new Customer.
+	Backfills a matched Customer's missing mobile/email from this checkout."""
+	from calicut_textiles.api.storefront.auth import backfill_customer_contact
+
 	email = (contact.get("email") or "").strip().lower()
 	phone = (contact.get("phone") or "").strip()
 
+	existing = None
 	if email:
 		existing = frappe.db.get_value("Customer", {"email_id": email}, "name")
-		if existing:
-			return existing
-	if phone:
+	if not existing and phone:
 		existing = frappe.db.get_value("Customer", {"mobile_no": phone}, "name")
-		if existing:
-			return existing
+
+	if existing:
+		backfill_customer_contact(existing, phone=phone, email=email)
+		return existing
 
 	doc = frappe.new_doc("Customer")
 	doc.customer_name = contact.get("name") or settings.fallback_customer_name or "Storefront Customer"

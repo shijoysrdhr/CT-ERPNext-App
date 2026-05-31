@@ -8,7 +8,7 @@ Customer via `auth.require_customer()`.
 import frappe
 from frappe import _
 
-from calicut_textiles.api.storefront.auth import require_customer
+from calicut_textiles.api.storefront.auth import backfill_customer_contact, require_customer
 
 
 @frappe.whitelist(allow_guest=True)
@@ -192,6 +192,9 @@ def save_address(
 
 	if _truthy(is_default):
 		_set_default(doc.name, customer)
+
+	# Complete the Customer's contact info from this address when it's blank.
+	backfill_customer_contact(customer, phone=doc.phone, email=doc.email_id)
 
 	return _serialize_address(_address_row(doc.name))
 

@@ -357,6 +357,30 @@ def require_customer():
 	return session.customer
 
 
+def backfill_customer_contact(customer, phone=None, email=None):
+	"""Fill a Customer's `mobile_no` / `email_id` from a later interaction
+	(checkout, saved address) when they're still blank. A Google/email login
+	creates the Customer with email only — this lets the phone provided at
+	checkout land on the Customer record too (and makes it dedupe-able with a
+	phone-OTP customer). Only fills blanks; never overwrites existing values."""
+	if not customer:
+		return
+	current = frappe.db.get_value(
+		"Customer", customer, ["mobile_no", "email_id"], as_dict=True
+	)
+	if not current:
+		return
+	phone = (phone or "").strip()
+	email = (email or "").strip().lower()
+	updates = {}
+	if phone and not current.mobile_no:
+		updates["mobile_no"] = phone
+	if email and not current.email_id:
+		updates["email_id"] = email
+	if updates:
+		frappe.db.set_value("Customer", customer, updates)
+
+
 # ---------------------------------------------------------------------------
 # Firebase Auth (phone / Google / email)
 # ---------------------------------------------------------------------------
