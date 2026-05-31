@@ -17,8 +17,13 @@ the signature verification + idempotency by Razorpay payment id.
 """
 
 import json
+import re
+
 import frappe
 from frappe import _
+
+# Standard 15-char Indian GSTIN pattern.
+_GSTIN_RE = re.compile(r"^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z]Z[0-9A-Z]$")
 
 from calicut_textiles.goshop.doctype.storefront_settings.storefront_settings import (
 	get_settings,
@@ -86,14 +91,23 @@ def place_order(items, contact, address, payment):
 					"grandTotal": si_row.grand_total,
 				}
 
+	# Optional GSTIN — only B2B/wholesale buyers provide it.
+	gstin = _clean_gstin(parsed["contact"].get("gstin"))
+
 	settings = get_settings()
 	customer = _get_or_create_customer(parsed["contact"], settings)
-	_attach_address(customer, parsed["contact"], parsed["address"])
+	if gstin:
+		_set_gstin("Customer", customer, gstin)
+	address_name = _attach_address(customer, parsed["contact"], parsed["address"], gstin=gstin)
 
 	invoice = _create_sales_invoice(
 		customer=customer,
 		lines=parsed["items"],
 		address=parsed["address"],
+		# Link the address on the invoice only for B2B orders, so India
+		# Compliance can derive billing GSTIN + place of supply. B2C orders
+		# keep their current (address-less) invoice behaviour untouched.
+		address_name=address_name if gstin else None,
 		contact=parsed["contact"],
 		payment=parsed["payment"],
 		settings=settings,
@@ -154,11 +168,37 @@ def _get_or_create_customer(contact, settings):
 	return doc.name
 
 
-def _attach_address(customer, contact, address):
-	"""Create + link an Address. We don't bother deduping addresses for now —
-	repeat customers will accumulate copies. Fine for v1."""
-	if not address.get("line1"):
+def _clean_gstin(gstin):
+	"""Validate an optional GSTIN. Returns the upper-cased value, or None if
+	blank; raises a friendly error if present but malformed."""
+	gstin = (gstin or "").strip().upper()
+	if not gstin:
+		return None
+	if not _GSTIN_RE.match(gstin):
+		frappe.throw(_("Enter a valid 15-character GSTIN, or leave it blank."))
+	return gstin
+
+
+def _set_gstin(doctype, name, gstin):
+	"""Set gstin (+ Registered Regular category) on a doc, when India
+	Compliance's fields exist. Uses db.set_value to avoid re-running heavy
+	document validation."""
+	if not gstin:
 		return
+	meta = frappe.get_meta(doctype)
+	if not meta.has_field("gstin"):
+		return
+	updates = {"gstin": gstin}
+	if meta.has_field("gst_category"):
+		updates["gst_category"] = "Registered Regular"
+	frappe.db.set_value(doctype, name, updates)
+
+
+def _attach_address(customer, contact, address, gstin=None):
+	"""Create + link an Address; return its name. We don't dedupe for now —
+	repeat customers accumulate copies. Fine for v1."""
+	if not address.get("line1"):
+		return None
 
 	doc = frappe.new_doc("Address")
 	doc.address_title = contact.get("name") or customer
@@ -174,9 +214,12 @@ def _attach_address(customer, contact, address):
 	doc.email_id = contact.get("email") or ""
 	doc.append("links", {"link_doctype": "Customer", "link_name": customer})
 	doc.insert(ignore_permissions=True)
+	if gstin:
+		_set_gstin("Address", doc.name, gstin)
+	return doc.name
 
 
-def _create_sales_invoice(customer, lines, address, contact, payment, settings):
+def _create_sales_invoice(customer, lines, address, contact, payment, settings, address_name=None):
 	"""Build a submitted Sales Invoice with cart items, tax template, shipping
 	as an Actual tax row, and a Payment Entry posting to the configured
 	bank/cash account."""
@@ -186,6 +229,11 @@ def _create_sales_invoice(customer, lines, address, contact, payment, settings):
 	si.set_posting_time = 1
 	si.currency = settings.default_currency or "INR"
 	si.selling_price_list = settings.default_price_list
+	if address_name:
+		# B2B: link billing + shipping so India Compliance derives billing
+		# GSTIN and place of supply from the address.
+		si.customer_address = address_name
+		si.shipping_address_name = address_name
 	si.remarks = (
 		f"Storefront order. Razorpay order: {payment.get('razorpayOrderId')}, "
 		f"payment: {payment.get('razorpayPaymentId')}"
