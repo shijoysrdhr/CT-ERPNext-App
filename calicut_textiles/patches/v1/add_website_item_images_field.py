@@ -3,10 +3,15 @@ attach multiple product photos in one place, without the multi-step Website
 Slideshow flow. Idempotent — `create_custom_field` skips if it already exists.
 """
 
+import frappe
 from frappe.custom.doctype.custom_field.custom_field import create_custom_field
 
 
 def execute():
+	# Website Item ships with the `webshop` app; skip where it isn't installed.
+	if not frappe.db.exists("DocType", "Website Item"):
+		return
+
 	create_custom_field(
 		"Website Item",
 		{

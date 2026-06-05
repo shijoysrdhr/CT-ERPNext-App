@@ -13,10 +13,18 @@ patches (e.g. `add_website_item_is_standard_field`, which uses
 `insert_after: custom_batch_no`) position correctly on the form.
 """
 
+import frappe
 from frappe.custom.doctype.custom_field.custom_field import create_custom_field
 
 
 def execute():
+	# Website Item ships with the `webshop` app, not core ERPNext. On a site
+	# where webshop isn't installed (e.g. the Frappe Cloud dev bench) the
+	# DocType is absent and create_custom_field would raise LinkValidationError,
+	# aborting the whole migrate. Nothing depends on these fields there, so skip.
+	if not frappe.db.exists("DocType", "Website Item"):
+		return
+
 	fields = [
 		{
 			"fieldname": "custom_batch_no",

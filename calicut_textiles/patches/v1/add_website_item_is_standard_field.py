@@ -7,10 +7,15 @@ batches, FIFO allocation on sale. Unchecked = the existing one-off-per-batch
 model (sarees, wedding pieces). Idempotent.
 """
 
+import frappe
 from frappe.custom.doctype.custom_field.custom_field import create_custom_field
 
 
 def execute():
+	# Website Item ships with the `webshop` app; skip where it isn't installed.
+	if not frappe.db.exists("DocType", "Website Item"):
+		return
+
 	create_custom_field(
 		"Website Item",
 		{
