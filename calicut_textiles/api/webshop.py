@@ -8,6 +8,14 @@ def refresh_website_item_batch_qty(sle, method=None):
 
 	Wired via hooks.py doc_events on Stock Ledger Entry.
 	"""
+	# Website Item ships with the webshop app. On a site where webshop isn't
+	# installed (e.g. the dev bench restored from a prod backup that never had
+	# webshop), the DocType/table is absent and the get_all below raises
+	# TableMissingError on EVERY stock movement, blocking all submits/cancels.
+	# Nothing to refresh there, so no-op. (get_installed_apps is request-cached.)
+	if "webshop" not in frappe.get_installed_apps():
+		return
+
 	if not sle or sle.is_cancelled:
 		# Cancellation: still need to refresh — read batch numbers from bundle anyway
 		pass
