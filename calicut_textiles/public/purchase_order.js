@@ -21,3 +21,20 @@ frappe.ui.form.on('Purchase Order', {
         }
     }
 });
+
+frappe.ui.form.on("Purchase Order Item", {
+    // UI "Net Qty" (field: qty) = UI "Qty" (field: custom_net_qty) * PCS (field: custom_pcs)
+    custom_net_qty: function(frm, cdt, cdn) {
+        update_qty(frm, cdt, cdn);
+    },
+    custom_pcs: function(frm, cdt, cdn) {
+        update_qty(frm, cdt, cdn);
+    }
+});
+
+function update_qty(frm, cdt, cdn) {
+    let row = locals[cdt][cdn];
+    if (row.custom_net_qty && row.custom_pcs) {
+        frappe.model.set_value(cdt, cdn, 'qty', row.custom_net_qty * row.custom_pcs);
+    }
+}

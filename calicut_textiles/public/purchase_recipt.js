@@ -23,6 +23,41 @@ frappe.ui.form.on('Purchase Receipt', {
             frappe.model.set_value(doc.doctype, doc.name, "custom_barcode_scan", doc.barcode);
         })
     },
+    refresh: function(frm) {
+        if (!frm.is_new() && frm.doc.docstatus == 1 && !frm.doc.custom_landed_cost) {
+            frm.add_custom_button(__('Landed Cost Voucher'), function() {
+                frappe.call({
+                    method: "calicut_textiles.calicut_textiles.purchase_receipt.create_landed_cost_voucher",
+                    args: {
+                        pr: frm.doc.name
+                    },
+                    callback: function(r) {
+                        if (r.message) {
+                            frappe.msgprint(__('Landed Cost Voucher {0} created successfully', [r.message]));
+                        }
+                    }
+                });
+            }, __('Create'));
+        }
+        frm.add_custom_button(__('Create Item Prices'), function() {
+            frappe.call({
+                method: "calicut_textiles.calicut_textiles.purchase_receipt.create_item_price",
+                args: {
+                    items: JSON.stringify(frm.doc.items)
+                },
+                callback: function(r) {
+                    if (r.message) {
+                        frappe.msgprint(__('Item Price updated successfully.'));
+                    }
+                }
+            });
+        }, __("Create"));
+    },
+    before_submit: function(frm) {
+        if (!frm.doc.custom_gc_no) {
+            frappe.throw(__('LR No is mandatory before submitting the Purchase Receipt.'));
+        }
+    },
     // Header "Apply" button — push the header selling/retail % to every item row
     custom_apply: function(frm) {
         if (!frm.doc.custom_selling_percentage_ && !frm.doc.custom_retail_percentage_) {
