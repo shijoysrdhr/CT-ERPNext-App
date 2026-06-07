@@ -56,12 +56,14 @@ frappe.ui.form.on('Purchase Receipt', {
 });
 
 frappe.ui.form.on("Purchase Receipt Item", {
-    // Net Qty = Qty * PCS  (enter Qty and PCS, Net Qty auto-fills)
-    qty: function(frm, cdt, cdn) {
-        update_net_qty(frm, cdt, cdn);
+    // NOTE: field labels are reversed vs field names ->
+    //   UI "Qty" = custom_net_qty,  UI "PCS" = custom_pcs,  UI "Net Qty" = qty
+    // User enters Qty (custom_net_qty) + PCS (custom_pcs); Net Qty (qty) = Qty * PCS
+    custom_net_qty: function(frm, cdt, cdn) {
+        update_qty(frm, cdt, cdn);
     },
     custom_pcs: function(frm, cdt, cdn) {
-        update_net_qty(frm, cdt, cdn);
+        update_qty(frm, cdt, cdn);
     },
     // Selling % -> Selling Rate  (e.g. rate 120 + 10% = 132)
     custom_selling_percentage: function(frm, cdt, cdn) {
@@ -97,9 +99,10 @@ frappe.ui.form.on("Purchase Receipt Item", {
     }
 });
 
-function update_net_qty(frm, cdt, cdn) {
+function update_qty(frm, cdt, cdn) {
+    // UI "Net Qty" (field: qty) = UI "Qty" (field: custom_net_qty) * PCS
     let row = locals[cdt][cdn];
-    if (row.qty && row.custom_pcs) {
-        frappe.model.set_value(cdt, cdn, 'custom_net_qty', row.qty * row.custom_pcs);
+    if (row.custom_net_qty && row.custom_pcs) {
+        frappe.model.set_value(cdt, cdn, 'qty', row.custom_net_qty * row.custom_pcs);
     }
 }
