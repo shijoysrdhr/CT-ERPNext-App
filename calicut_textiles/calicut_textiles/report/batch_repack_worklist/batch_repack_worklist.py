@@ -70,7 +70,17 @@ def get_data(filters):
 			return []
 	items = list({d.item_code for d in demand})
 	balances = get_balances(items)                  # {(batch, wh): balance} all warehouses
-	avail = {k: v for k, v in balances.items() if v > EPS}  # mutable shared pool
+	reserved = get_reserved_by_batch(items)         # {(batch, wh): qty claimed by DRAFT invoices}
+	# Free stock = balance minus what draft invoices already claim on that batch.
+	# Without this, a batch being sold on the very invoice we're fixing (or on
+	# another draft) looks "available" and gets robbed as a repack/transfer source,
+	# driving it negative on submit. Reserve is company-wide across all drafts, not
+	# just the filtered invoice, so concurrent drafts can't double-claim one batch.
+	avail = {}                                      # mutable shared pool of FREE stock
+	for k, bal in balances.items():
+		free = flt(bal - reserved.get(k, 0), PREC)
+		if free > EPS:
+			avail[k] = free
 	batch_item, batch_age = get_batch_meta(items)   # {batch: item}, {batch: age}
 	item_names = get_item_names(items)
 	wh_company = get_wh_company({wh for (_b, wh) in avail} | {d.warehouse for d in demand})
@@ -115,7 +125,7 @@ def get_data(filters):
 			if take <= EPS:
 				continue
 			rows.append({**base, "action": "Transfer", "source_warehouse": wh, "source_batch": sb,
-				"source_avail": flt(balances.get((sb, wh), 0), PREC), "qty": take,
+				"source_avail": flt(cur, PREC), "qty": take,
 				"status": _("Transfer from {0}").format(wh)})
 			avail[(sb, wh)] = flt(cur - take, PREC)
 			remaining = flt(remaining - take, PREC)
@@ -133,7 +143,7 @@ def get_data(filters):
 			if take <= EPS:
 				continue
 			rows.append({**base, "action": "Repack", "source_warehouse": sw, "source_batch": b,
-				"source_avail": flt(balances.get((b, sw), 0), PREC), "qty": take,
+				"source_avail": flt(cur, PREC), "qty": take,
 				"status": _("Repack ready")})
 			avail[(b, sw)] = flt(cur - take, PREC)
 			remaining = flt(remaining - take, PREC)
@@ -170,6 +180,28 @@ def get_draft_demand(filters):
 		params,
 		as_dict=True,
 	)
+
+
+def get_reserved_by_batch(items):
+	"""Qty already committed to DRAFT Sales Invoices per (batch, warehouse), across
+	ALL draft invoices company-wide (deliberately NOT filtered to the report's
+	sales_invoice). Subtracted from balance to get the FREE stock a batch can lend
+	as a repack/transfer source — so a batch that is itself being sold on a draft
+	can never be chosen as a source and driven negative on submit."""
+	rows = frappe.db.sql(
+		f"""
+		SELECT sii.batch_no, sii.warehouse, ROUND(SUM(sii.qty), {PREC}) AS reserved
+		FROM `tabSales Invoice Item` sii
+		JOIN `tabSales Invoice` si ON si.name = sii.parent
+		WHERE si.docstatus = 0
+			AND sii.batch_no IS NOT NULL AND sii.batch_no <> ''
+			AND sii.item_code IN %(items)s
+		GROUP BY sii.batch_no, sii.warehouse
+		""",
+		{"items": items},
+		as_dict=True,
+	)
+	return {(r.batch_no, r.warehouse): flt(r.reserved, PREC) for r in rows}
 
 
 def get_commented_sis(sis):
