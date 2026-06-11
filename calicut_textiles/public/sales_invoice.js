@@ -16,6 +16,14 @@ frappe.ui.form.on('Sales Invoice', {
         frm.get_field('custom_references').grid.cannot_add_rows = true;
     },
     refresh: function(frm){
+        // ERPNext re-seeds the POS payment grid from the POS Profile and can
+        // leave a stale/duplicate Mode of Payment row on screen (a full reload
+        // clears it). Clean the model + force a fresh re-render so the duplicate
+        // stops showing. See dedupe_payment_modes() for the (conservative) rules.
+        if (frm.doc.is_pos) {
+            dedupe_payment_modes(frm);
+            frm.refresh_field('payments');
+        }
         if (frm.doc.customer) {
             frappe.call({
                 method: 'calicut_textiles.calicut_textiles.events.sales_invoice.set_user_and_customer_and_branch',
@@ -119,6 +127,41 @@ frappe.ui.form.on('Sales Invoice Item', {
         get_total(frm, cdt, cdn);
     },
 });
+
+function dedupe_payment_modes(frm) {
+    // Collapse duplicate POS payment rows that ERPNext's re-seed can leave behind.
+    // Rules (deliberately conservative so live POS entry is never disturbed):
+    //   - same mode_of_payment appearing twice -> keep one, carry over any amount
+    //   - blank-mode rows are left alone on a draft (cashier may be mid-entry),
+    //     and dropped only on a submitted invoice where they are pure noise.
+    if (!frm.doc.is_pos || !(frm.doc.payments && frm.doc.payments.length)) return;
+    let seen = {};
+    let kept = [];
+    let changed = false;
+    frm.doc.payments.forEach(function (row) {
+        let mode = row.mode_of_payment;
+        if (!mode) {
+            if (frm.doc.docstatus === 1 && !flt(row.amount)) { changed = true; return; }
+            kept.push(row);
+            return;
+        }
+        if (mode in seen) {
+            let keep = seen[mode];
+            if (flt(row.amount) && !flt(keep.amount)) {
+                keep.amount = row.amount;
+                keep.base_amount = row.base_amount;
+            }
+            changed = true;
+            return;
+        }
+        seen[mode] = row;
+        kept.push(row);
+    });
+    if (changed) {
+        kept.forEach((r, i) => (r.idx = i + 1));
+        frm.doc.payments = kept;
+    }
+}
 
 function validate_employee_selection(frm) {
     if (frm.doc.custom_sales_person && frm.doc.custom_checked_by && frm.doc.custom_sales_person === frm.doc.custom_checked_by) {
