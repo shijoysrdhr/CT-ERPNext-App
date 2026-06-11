@@ -164,6 +164,7 @@ doc_events = {
 
     },
     "Purchase Invoice": {
+        "before_validate": "calicut_textiles.calicut_textiles.events.purchase_invoice.set_net_qty",
         "before_submit": "calicut_textiles.calicut_textiles.events.purchase_invoice.create_purchase_invoices",
 
     },

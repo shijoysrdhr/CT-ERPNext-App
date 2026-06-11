@@ -1,6 +1,16 @@
 import frappe
 
 
+def set_net_qty(doc, method):
+    # Field labels are reversed vs field names on Purchase Invoice Item:
+    #   UI "Qty" = custom_net_qty,  UI "PCS" = custom_pcs,  UI "Net Qty" = qty
+    # Mirror the client-side rule so qty is correct even if the browser JS
+    # didn't run: Net Qty (qty) = Qty (custom_net_qty) * PCS (custom_pcs).
+    for row in doc.items:
+        if row.custom_net_qty and row.custom_pcs:
+            row.qty = row.custom_net_qty * row.custom_pcs
+
+
 def create_purchase_invoices(doc, method):
     item = frappe.get_doc("Calicut Textiles Settings")
 
