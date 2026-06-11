@@ -26,7 +26,7 @@ invoice by calicut_textiles.api.batch_repack.
 
 import frappe
 from frappe import _
-from frappe.utils import flt, getdate
+from frappe.utils import flt, get_datetime, getdate
 
 PREC = 3
 EPS = 0.0005
@@ -69,90 +69,101 @@ def get_data(filters):
 		if not demand:
 			return []
 	items = list({d.item_code for d in demand})
-	balances = get_balances(items)                  # {(batch, wh): balance} all warehouses
 	reserved = get_reserved_by_batch(items)         # {(batch, wh): qty claimed by DRAFT invoices}
-	# Free stock = balance minus what draft invoices already claim on that batch.
-	# Without this, a batch being sold on the very invoice we're fixing (or on
-	# another draft) looks "available" and gets robbed as a repack/transfer source,
-	# driving it negative on submit. Reserve is company-wide across all drafts, not
-	# just the filtered invoice, so concurrent drafts can't double-claim one batch.
-	avail = {}                                      # mutable shared pool of FREE stock
-	for k, bal in balances.items():
-		free = flt(bal - reserved.get(k, 0), PREC)
-		if free > EPS:
-			avail[k] = free
 	batch_item, batch_age = get_batch_meta(items)   # {batch: item}, {batch: age}
 	item_names = get_item_names(items)
-	wh_company = get_wh_company({wh for (_b, wh) in avail} | {d.warehouse for d in demand})
+	wh_company = get_wh_company(None)               # {wh: company} for every warehouse
 
-	# Repack index: same-warehouse other batches of an item, oldest first.
-	repack_index = {}
-	for (batch, wh) in avail:
-		it = batch_item.get(batch)
-		if it:
-			repack_index.setdefault((it, wh), []).append(batch)
-	for key in repack_index:
-		repack_index[key].sort(key=lambda b: (batch_age.get(b) is None, batch_age.get(b) or FAR, b))
-
+	# Balances are POINT-IN-TIME, not live. Each invoice validates batch stock as of
+	# its OWN posting datetime, and these invoices are routinely back-dated. A live
+	# balance hides shortfalls on a batch that was short at the back-dated moment but
+	# has since been replenished. So group demand by (posting_date, posting_time) and
+	# project each group against the balance as it stood then.
 	rows = []
+	groups = {}
 	for d in demand:
-		sw, item, sb = d.warehouse, d.item_code, d.batch_no
-		bal = flt(balances.get((sb, sw), 0), PREC)
-		shortfall = flt(d.demand - bal, PREC)
-		if shortfall <= EPS:
-			continue
+		groups.setdefault((d.posting_date, d.posting_time), []).append(d)
 
-		remaining = shortfall
-		comp = wh_company.get(sw)
-		base = {
-			"si": d.si, "commented": "Yes" if d.si in commented else "No",
-			"item_code": item, "item_name": item_names.get(item),
-			"warehouse": sw, "short_batch": sb, "balance": bal,
-			"demand": d.demand, "shortfall": shortfall,
-		}
+	for (pdate, ptime), group in groups.items():
+		balances = get_balances(items, pdate, ptime)   # {(batch, wh): balance as of pdate/ptime}
+		# Free stock = balance minus what draft invoices already claim on that batch.
+		# Without this, a batch being sold on the very invoice we're fixing (or on
+		# another draft) looks "available" and gets robbed as a repack/transfer source,
+		# driving it negative on submit. Reserve is company-wide across all drafts, not
+		# just the filtered invoice, so concurrent drafts can't double-claim one batch.
+		avail = {}                                      # mutable pool of FREE stock for this group
+		for k, bal in balances.items():
+			free = flt(bal - reserved.get(k, 0), PREC)
+			if free > EPS:
+				avail[k] = free
 
-		# Tier 1 — TRANSFER the exact short batch from other warehouses (most available first).
-		transfer_srcs = sorted(
-			[(wh, av) for (b, wh), av in avail.items()
-				if b == sb and wh != sw and av > EPS and wh_company.get(wh) == comp],
-			key=lambda x: -x[1],
-		)
-		for wh, _av in transfer_srcs:
-			if remaining <= EPS:
-				break
-			cur = avail.get((sb, wh), 0)
-			take = flt(min(cur, remaining), PREC)
-			if take <= EPS:
-				continue
-			rows.append({**base, "action": "Transfer", "source_warehouse": wh, "source_batch": sb,
-				"source_avail": flt(cur, PREC), "qty": take,
-				"status": _("Transfer from {0}").format(wh)})
-			avail[(sb, wh)] = flt(cur - take, PREC)
-			remaining = flt(remaining - take, PREC)
+		# Repack index: same-warehouse other batches of an item, oldest first.
+		repack_index = {}
+		for (batch, wh) in avail:
+			it = batch_item.get(batch)
+			if it:
+				repack_index.setdefault((it, wh), []).append(batch)
+		for key in repack_index:
+			repack_index[key].sort(key=lambda b: (batch_age.get(b) is None, batch_age.get(b) or FAR, b))
 
-		# Tier 2 — REPACK from other batches in the same warehouse (FIFO).
-		for b in repack_index.get((item, sw), []):
-			if remaining <= EPS:
-				break
-			if b == sb:
+		for d in group:
+			sw, item, sb = d.warehouse, d.item_code, d.batch_no
+			bal = flt(balances.get((sb, sw), 0), PREC)
+			shortfall = flt(d.demand - bal, PREC)
+			if shortfall <= EPS:
 				continue
-			cur = avail.get((b, sw), 0)
-			if cur <= EPS:
-				continue
-			take = flt(min(cur, remaining), PREC)
-			if take <= EPS:
-				continue
-			rows.append({**base, "action": "Repack", "source_warehouse": sw, "source_batch": b,
-				"source_avail": flt(cur, PREC), "qty": take,
-				"status": _("Repack ready")})
-			avail[(b, sw)] = flt(cur - take, PREC)
-			remaining = flt(remaining - take, PREC)
 
-		# Tier 3 — MATERIAL RECEIPT for the true remainder (no stock anywhere).
-		if remaining > EPS:
-			rows.append({**base, "action": "Material Receipt", "source_warehouse": None, "source_batch": None,
-				"source_avail": 0, "qty": flt(remaining, PREC),
-				"status": _("⚠ No stock anywhere — receive {0}").format(flt(remaining, PREC))})
+			remaining = shortfall
+			comp = wh_company.get(sw)
+			base = {
+				"si": d.si, "commented": "Yes" if d.si in commented else "No",
+				"item_code": item, "item_name": item_names.get(item),
+				"warehouse": sw, "short_batch": sb, "balance": bal,
+				"demand": d.demand, "shortfall": shortfall,
+			}
+
+			# Tier 1 — TRANSFER the exact short batch from other warehouses (most available first).
+			transfer_srcs = sorted(
+				[(wh, av) for (b, wh), av in avail.items()
+					if b == sb and wh != sw and av > EPS and wh_company.get(wh) == comp],
+				key=lambda x: -x[1],
+			)
+			for wh, _av in transfer_srcs:
+				if remaining <= EPS:
+					break
+				cur = avail.get((sb, wh), 0)
+				take = flt(min(cur, remaining), PREC)
+				if take <= EPS:
+					continue
+				rows.append({**base, "action": "Transfer", "source_warehouse": wh, "source_batch": sb,
+					"source_avail": flt(cur, PREC), "qty": take,
+					"status": _("Transfer from {0}").format(wh)})
+				avail[(sb, wh)] = flt(cur - take, PREC)
+				remaining = flt(remaining - take, PREC)
+
+			# Tier 2 — REPACK from other batches in the same warehouse (FIFO).
+			for b in repack_index.get((item, sw), []):
+				if remaining <= EPS:
+					break
+				if b == sb:
+					continue
+				cur = avail.get((b, sw), 0)
+				if cur <= EPS:
+					continue
+				take = flt(min(cur, remaining), PREC)
+				if take <= EPS:
+					continue
+				rows.append({**base, "action": "Repack", "source_warehouse": sw, "source_batch": b,
+					"source_avail": flt(cur, PREC), "qty": take,
+					"status": _("Repack ready")})
+				avail[(b, sw)] = flt(cur - take, PREC)
+				remaining = flt(remaining - take, PREC)
+
+			# Tier 3 — MATERIAL RECEIPT for the true remainder (no stock anywhere).
+			if remaining > EPS:
+				rows.append({**base, "action": "Material Receipt", "source_warehouse": None, "source_batch": None,
+					"source_avail": 0, "qty": flt(remaining, PREC),
+					"status": _("⚠ No stock anywhere — receive {0}").format(flt(remaining, PREC))})
 
 	return rows
 
@@ -169,13 +180,15 @@ def get_draft_demand(filters):
 
 	return frappe.db.sql(
 		f"""
-		SELECT sii.parent AS si, sii.item_code, sii.warehouse, sii.batch_no,
+		SELECT sii.parent AS si, si.posting_date, si.posting_time,
+			sii.item_code, sii.warehouse, sii.batch_no,
 			ROUND(SUM(sii.qty), {PREC}) AS demand
 		FROM `tabSales Invoice Item` sii
 		JOIN `tabSales Invoice` si ON si.name = sii.parent
 		WHERE {conditions}
 			AND sii.batch_no IS NOT NULL AND sii.batch_no <> ''
-		GROUP BY sii.parent, sii.item_code, sii.warehouse, sii.batch_no
+		GROUP BY sii.parent, si.posting_date, si.posting_time,
+			sii.item_code, sii.warehouse, sii.batch_no
 		""",
 		params,
 		as_dict=True,
@@ -222,9 +235,12 @@ def get_commented_sis(sis):
 	return {r[0] for r in rows}
 
 
-def get_balances(items):
-	"""Live batch balance per (batch, warehouse), all warehouses, scoped to the
-	demand items. Verified identical to erpnext ...batch.get_batch_qty."""
+def get_balances(items, posting_date, posting_time):
+	"""Batch balance per (batch, warehouse), all warehouses, scoped to the demand
+	items, AS OF the given posting datetime — only entries that posted at or before
+	then count. This mirrors how the Sales Invoice validates batch stock at its own
+	(often back-dated) posting time. Verified identical to erpnext ...batch.get_batch_qty."""
+	dt = get_datetime(f"{posting_date} {posting_time}")
 	rows = frappe.db.sql(
 		f"""
 		SELECT sbe.batch_no, sbe.warehouse, ROUND(SUM(sbe.qty), {PREC}) AS balance
@@ -233,9 +249,10 @@ def get_balances(items):
 		JOIN `tabBatch` b ON b.name = sbe.batch_no
 		WHERE sbb.is_cancelled = 0 AND sbb.docstatus = 1
 			AND b.item IN %(items)s
+			AND TIMESTAMP(sbb.posting_date, sbb.posting_time) <= %(dt)s
 		GROUP BY sbe.batch_no, sbe.warehouse
 		""",
-		{"items": items},
+		{"items": items, "dt": dt},
 		as_dict=True,
 	)
 	return {(r.batch_no, r.warehouse): flt(r.balance, PREC) for r in rows}
@@ -260,8 +277,13 @@ def get_item_names(items):
 
 
 def get_wh_company(warehouses):
-	warehouses = [w for w in warehouses if w]
-	if not warehouses:
-		return {}
-	rows = frappe.get_all("Warehouse", filters={"name": ["in", warehouses]}, fields=["name", "company"])
+	"""{warehouse: company}. Pass None for every warehouse (point-in-time balance
+	groups each pull their own set, so resolving the whole small table once is simpler)."""
+	if warehouses is None:
+		rows = frappe.get_all("Warehouse", fields=["name", "company"])
+	else:
+		warehouses = [w for w in warehouses if w]
+		if not warehouses:
+			return {}
+		rows = frappe.get_all("Warehouse", filters={"name": ["in", warehouses]}, fields=["name", "company"])
 	return {r.name: r.company for r in rows}
