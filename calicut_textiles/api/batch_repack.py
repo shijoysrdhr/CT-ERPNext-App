@@ -114,6 +114,13 @@ def _build_repack(si, rows, submit):
 		se.append("items", {
 			"item_code": r["item_code"], "qty": qty, "t_warehouse": r["warehouse"],
 			"use_serial_batch_fields": 1, "batch_no": r["short_batch"],
+			# Qty in == qty out of the same item, so conserve value by pinning the
+			# finished good's rate to the source batch's valuation. Required when an
+			# invoice has >1 repack row: ERPNext refuses to auto-value a Repack with
+			# multiple finished goods (validate_repack_entry) unless each FG row sets
+			# its basic rate manually.
+			"is_finished_item": 1, "set_basic_rate_manually": 1,
+			"basic_rate": _receipt_rate(r["item_code"], r["warehouse"], r["source_batch"]),
 		})
 	return _save(se, submit)
 
