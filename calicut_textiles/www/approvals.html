@@ -1,0 +1,248 @@
+{% extends "templates/web.html" %}
+
+{% block title %}Cash Approvals{% endblock %}
+
+{% block navbar %}
+<nav class="ct-appbar">
+  <div class="ct-appbar-left">
+    <button class="ct-menu-btn" id="ct-menu-btn" title="Recently approved" aria-label="Menu">☰</button>
+    <a class="ct-brand" href="/approvals">
+      <img src="/files/clt-p.png" alt="Calicut Textiles">
+      <span>Cash Approvals</span>
+    </a>
+  </div>
+  <a class="ct-logout" href="/api/method/logout" title="Log out">Logout</a>
+</nav>
+
+<div class="ct-drawer-overlay" id="ct-drawer-overlay"></div>
+<aside class="ct-drawer" id="ct-drawer">
+  <div class="ct-drawer-head">
+    <span>Recently Approved</span>
+    <button class="ct-drawer-close" id="ct-drawer-close" aria-label="Close">×</button>
+  </div>
+  <div class="ct-drawer-body" id="ct-drawer-body">
+    <div class="ct-empty"><div class="ct-spin"></div></div>
+  </div>
+</aside>
+{% endblock %}
+
+{% block page_content %}
+<div class="ct-approvals">
+  <div class="ct-head">
+    <div>
+      <h1>Cash Approvals</h1>
+      <div class="ct-sub" id="ct-sub">Loading…</div>
+    </div>
+    <button class="ct-refresh" id="ct-refresh" title="Refresh">⟳</button>
+  </div>
+
+  <div id="ct-list"></div>
+
+  <div id="ct-empty" class="ct-empty" style="display:none">
+    <div class="ct-empty-ic">✓</div>
+    <div>No pending cash approvals.</div>
+  </div>
+
+  <div id="ct-loading" class="ct-empty"><div class="ct-spin"></div></div>
+</div>
+
+<div id="ct-toast" class="ct-toast"></div>
+
+<style>
+.ct-appbar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 16px;background:#fff;border-bottom:1px solid #e5e7eb;position:sticky;top:0;z-index:50}
+.ct-appbar-left{display:flex;align-items:center;gap:10px}
+.ct-menu-btn{border:1px solid #e5e7eb;background:#fff;border-radius:9px;width:40px;height:40px;font-size:1.15rem;cursor:pointer;color:#374151;line-height:1}
+.ct-menu-btn:active{background:#f3f4f6}
+.ct-drawer-overlay{position:fixed;inset:0;background:rgba(17,24,39,.45);opacity:0;pointer-events:none;transition:.25s;z-index:60}
+.ct-drawer-overlay.open{opacity:1;pointer-events:auto}
+.ct-drawer{position:fixed;top:0;left:0;bottom:0;width:340px;max-width:88vw;background:#f9fafb;z-index:70;transform:translateX(-100%);transition:transform .25s;display:flex;flex-direction:column;box-shadow:2px 0 16px rgba(0,0,0,.12)}
+.ct-drawer.open{transform:translateX(0)}
+.ct-drawer-head{display:flex;align-items:center;justify-content:space-between;padding:16px 18px;font-weight:700;font-size:1.05rem;background:#fff;border-bottom:1px solid #e5e7eb}
+.ct-drawer-close{border:0;background:none;font-size:1.6rem;line-height:1;cursor:pointer;color:#6b7280}
+.ct-drawer-body{overflow-y:auto;padding:12px 14px;flex:1}
+.ct-h-card{background:#fff;border:1px solid #eef0f2;border-radius:10px;padding:12px 13px;margin-bottom:10px}
+.ct-h-top{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.ct-h-amount{font-weight:700;color:#111827}
+.ct-h-badge{font-size:.62rem;font-weight:600;text-transform:uppercase;color:#6b7280}
+.ct-h-line{color:#6b7280;font-size:.82rem;margin-top:3px;word-break:break-word}
+.ct-h-meta{color:#9ca3af;font-size:.72rem;margin-top:6px}
+.ct-h-check{color:#16a34a;font-weight:700;margin-right:4px}
+.ct-brand{display:flex;align-items:center;gap:10px;text-decoration:none;color:#111827;font-weight:700;font-size:1.05rem}
+.ct-brand img{height:30px;width:auto;display:block}
+.ct-brand:hover{text-decoration:none;color:#111827}
+.ct-logout{color:#6b7280;text-decoration:none;font-size:.9rem;font-weight:500;padding:7px 12px;border:1px solid #e5e7eb;border-radius:8px}
+.ct-logout:hover{text-decoration:none;color:#dc2626;border-color:#fecaca}
+.ct-approvals{max-width:680px;margin:0 auto;padding:8px 14px 80px}
+.ct-head{display:flex;align-items:center;justify-content:space-between;margin:8px 0 18px}
+.ct-head h1{font-size:1.5rem;margin:0;font-weight:700}
+.ct-sub{color:#6b7280;font-size:.85rem;margin-top:2px}
+.ct-refresh{border:1px solid #e5e7eb;background:#fff;border-radius:10px;width:42px;height:42px;font-size:1.3rem;cursor:pointer;color:#374151}
+.ct-refresh:active{background:#f3f4f6}
+.ct-card{border:1px solid #e5e7eb;border-radius:14px;padding:16px;margin-bottom:14px;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+.ct-card-top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.ct-amount{font-size:1.5rem;font-weight:700;color:#111827;line-height:1.1}
+.ct-badge{font-size:.68rem;font-weight:600;text-transform:uppercase;letter-spacing:.03em;padding:4px 9px;border-radius:999px;background:#eef2ff;color:#4338ca;white-space:nowrap}
+.ct-badge.je{background:#ecfdf5;color:#047857}
+.ct-primary{margin-top:8px;font-weight:600;color:#1f2937}
+.ct-secondary{color:#6b7280;font-size:.88rem;margin-top:3px;word-break:break-word}
+.ct-remarks{margin-top:10px;padding:10px 12px;background:#f9fafb;border:1px solid #f0f1f3;border-radius:8px;color:#4b5563;font-size:.83rem;line-height:1.4;white-space:pre-wrap;word-break:break-word}
+.ct-meta{color:#9ca3af;font-size:.78rem;margin-top:8px;display:flex;gap:10px;flex-wrap:wrap}
+.ct-actions{display:flex;gap:10px;margin-top:14px}
+.ct-btn{flex:1;border:0;border-radius:10px;padding:12px;font-size:.95rem;font-weight:600;cursor:pointer}
+.ct-btn:disabled{opacity:.5;cursor:default}
+.ct-approve{background:#16a34a;color:#fff}
+.ct-approve:active{background:#15803d}
+.ct-reject{background:#fff;color:#dc2626;border:1px solid #fecaca}
+.ct-reject:active{background:#fef2f2}
+.ct-empty{text-align:center;color:#6b7280;padding:48px 16px}
+.ct-empty-ic{font-size:2.4rem;color:#16a34a;margin-bottom:10px}
+.ct-spin{width:30px;height:30px;border:3px solid #e5e7eb;border-top-color:#6366f1;border-radius:50%;margin:0 auto;animation:ctspin .8s linear infinite}
+@keyframes ctspin{to{transform:rotate(360deg)}}
+.ct-toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);background:#111827;color:#fff;padding:12px 20px;border-radius:10px;font-size:.9rem;opacity:0;pointer-events:none;transition:.25s;z-index:9999;max-width:90%}
+.ct-toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.ct-toast.err{background:#b91c1c}
+</style>
+
+<script>
+frappe.ready(function () {
+  const listEl = document.getElementById('ct-list');
+  const emptyEl = document.getElementById('ct-empty');
+  const loadingEl = document.getElementById('ct-loading');
+  const subEl = document.getElementById('ct-sub');
+
+  function toast(msg, isErr) {
+    const t = document.getElementById('ct-toast');
+    t.textContent = msg;
+    t.className = 'ct-toast show' + (isErr ? ' err' : '');
+    setTimeout(() => { t.className = 'ct-toast'; }, 2600);
+  }
+
+  function esc(s) {
+    return (s == null ? '' : String(s)).replace(/[&<>"]/g, c =>
+      ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  }
+
+  function card(it) {
+    const badgeCls = it.doctype === 'Journal Entry' ? 'ct-badge je' : 'ct-badge';
+    const label = it.doctype === 'Journal Entry' ? 'Journal' : 'Payment';
+    const approve = it.actions.indexOf('Approve') > -1
+      ? `<button class="ct-btn ct-approve" data-act="Approve">Approve</button>` : '';
+    const reject = it.actions.indexOf('Reject') > -1
+      ? `<button class="ct-btn ct-reject" data-act="Reject">Reject</button>` : '';
+    const el = document.createElement('div');
+    el.className = 'ct-card';
+    el.dataset.doctype = it.doctype;
+    el.dataset.name = it.name;
+    el.innerHTML =
+      `<div class="ct-card-top">
+         <div class="ct-amount">${esc(it.amount_str)}</div>
+         <span class="${badgeCls}">${label}</span>
+       </div>
+       <div class="ct-primary">${esc(it.primary)}</div>
+       <div class="ct-secondary">${esc(it.secondary)}</div>
+       ${it.remarks ? `<div class="ct-remarks">${esc(it.remarks)}</div>` : ''}
+       <div class="ct-meta"><span>${esc(it.name)}</span><span>${esc(it.date)}</span><span>by ${esc(it.created_by)}</span></div>
+       <div class="ct-actions">${approve}${reject}</div>`;
+    el.querySelectorAll('[data-act]').forEach(btn =>
+      btn.addEventListener('click', () => act(el, btn.dataset.act)));
+    return el;
+  }
+
+  function act(cardEl, action) {
+    let reason = null;
+    if (action === 'Reject') {
+      reason = window.prompt('Reason for rejection (optional):', '');
+      if (reason === null) return; // cancelled
+    }
+    cardEl.querySelectorAll('button').forEach(b => b.disabled = true);
+    frappe.call({
+      method: 'calicut_textiles.api.approvals.apply_action',
+      args: { doctype: cardEl.dataset.doctype, name: cardEl.dataset.name, action: action, reason: reason },
+      callback: function (r) {
+        if (r && r.message && r.message.ok) {
+          toast(cardEl.dataset.name + ' ' + (action === 'Approve' ? 'approved' : 'rejected'));
+          approvedLoaded = false; // history changed; reload next time drawer opens
+          cardEl.style.transition = '.25s'; cardEl.style.opacity = '0';
+          setTimeout(load, 350);
+        } else {
+          cardEl.querySelectorAll('button').forEach(b => b.disabled = false);
+        }
+      },
+      error: function (e) {
+        cardEl.querySelectorAll('button').forEach(b => b.disabled = false);
+        let msg = 'Could not ' + action.toLowerCase();
+        try { msg = (e.responseJSON && e.responseJSON._server_messages)
+          ? JSON.parse(JSON.parse(e.responseJSON._server_messages)[0]).message : msg; } catch (x) {}
+        toast(frappe.utils ? frappe.utils.strip_html(msg) : msg, true);
+      }
+    });
+  }
+
+  function load() {
+    loadingEl.style.display = 'block';
+    frappe.call({
+      method: 'calicut_textiles.api.approvals.get_pending_approvals',
+      callback: function (r) {
+        loadingEl.style.display = 'none';
+        const data = (r && r.message) || { items: [], count: 0, fullname: '' };
+        listEl.innerHTML = '';
+        subEl.textContent = data.fullname
+          ? `${data.fullname} · ${data.count} pending` : `${data.count} pending`;
+        if (!data.items.length) { emptyEl.style.display = 'block'; return; }
+        emptyEl.style.display = 'none';
+        data.items.forEach(it => listEl.appendChild(card(it)));
+      },
+      error: function () { loadingEl.style.display = 'none'; toast('Failed to load approvals', true); }
+    });
+  }
+
+  // ---- recently-approved drawer ----
+  const drawer = document.getElementById('ct-drawer');
+  const overlay = document.getElementById('ct-drawer-overlay');
+  const drawerBody = document.getElementById('ct-drawer-body');
+  let approvedLoaded = false;
+
+  function openDrawer() {
+    drawer.classList.add('open');
+    overlay.classList.add('open');
+    if (!approvedLoaded) loadApproved();
+  }
+  function closeDrawer() {
+    drawer.classList.remove('open');
+    overlay.classList.remove('open');
+  }
+
+  function hcard(it) {
+    const label = it.doctype === 'Journal Entry' ? 'Journal' : 'Payment';
+    return `<div class="ct-h-card">
+        <div class="ct-h-top"><span class="ct-h-amount"><span class="ct-h-check">✓</span>${esc(it.amount_str)}</span><span class="ct-h-badge">${label}</span></div>
+        <div class="ct-h-line">${esc(it.primary)}${it.secondary ? ' · ' + esc(it.secondary) : ''}</div>
+        <div class="ct-h-meta">${esc(it.name)} · ${esc(it.date)} · approved by ${esc(it.approved_by)}</div>
+      </div>`;
+  }
+
+  function loadApproved() {
+    drawerBody.innerHTML = '<div class="ct-empty"><div class="ct-spin"></div></div>';
+    frappe.call({
+      method: 'calicut_textiles.api.approvals.get_recent_approved',
+      args: { limit: 20 },
+      callback: function (r) {
+        approvedLoaded = true;
+        const items = (r && r.message && r.message.items) || [];
+        drawerBody.innerHTML = items.length
+          ? items.map(hcard).join('')
+          : '<div class="ct-empty">No approved entries yet.</div>';
+      },
+      error: function () { drawerBody.innerHTML = '<div class="ct-empty">Failed to load.</div>'; }
+    });
+  }
+
+  document.getElementById('ct-menu-btn').addEventListener('click', openDrawer);
+  document.getElementById('ct-drawer-close').addEventListener('click', closeDrawer);
+  overlay.addEventListener('click', closeDrawer);
+
+  document.getElementById('ct-refresh').addEventListener('click', load);
+  load();
+});
+</script>
+{% endblock %}
