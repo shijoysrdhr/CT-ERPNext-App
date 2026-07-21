@@ -9,6 +9,19 @@ from frappe.utils import get_datetime
 
 
 
+def is_holiday_for(employee, date):
+    """True if `date` falls on the employee's own holiday list."""
+    holiday_list = frappe.db.get_value("Employee", employee, "holiday_list")
+    if not holiday_list:
+        return False
+    return bool(
+        frappe.db.exists(
+            "Holiday",
+            {"parent": holiday_list, "parenttype": "Holiday List", "holiday_date": date},
+        )
+    )
+
+
 @frappe.whitelist()
 def get_late_minutes_from_in_log(employee, date):
     """Fetch custom_late_coming_minutes from IN check-in on same date"""
@@ -92,17 +105,21 @@ def update_employee_checkin_fields(doc, method):
     total_hours = total_seconds / 3600
     doc.custom_total_hours = round(total_hours, 2)
 
-    # If this employee's holiday list treats Sunday as a weekly off, Sunday
-    # work is overtime, not "late"/"early" — zero those fields and stop.
-    employee_holiday_list = frappe.db.get_value("Employee", doc.employee, "holiday_list")
-    if employee_holiday_list in ("CT Holidays", "RT Sunday Holidays") and time_obj.weekday() == 6:
+    # A day the employee's holiday list marks as a holiday is overtime, not
+    # "late"/"early" -- zero those fields and stop. This used to compare against
+    # the literal names "CT Holidays"/"RT Sunday Holidays", neither of which
+    # exists (the lists are "Sunday Holidays 26-27" / "No Holidays 26-27"), so
+    # the check never fired. Read the list itself instead of guessing its name.
+    if is_holiday_for(doc.employee, time_obj.date()):
         doc.custom_late_coming_minutes = 0
         doc.custom_early_going_minutes = 0
         doc.custom_late_early = 0
         return
 
-    grace_late = 10
-    grace_early = 10
+    settings_grace = frappe.db.get_single_value(
+        "Calicut Textiles Settings", "threshold_early_minutes"
+    )
+    grace_late = grace_early = settings_grace or 10
 
     if doc.log_type == 'IN':
         grace_limit = shift_start + timedelta(minutes=grace_late)

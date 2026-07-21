@@ -209,7 +209,9 @@ scheduler_events = {
 	# ],
 	"daily": [
 		"calicut_textiles.calicut_textiles.events.encashment.process_monthly_leave_encashment",
-        "calicut_textiles.calicut_textiles.events.employee_checkin.process_monthly_overtime_additional_salary"
+        # process_monthly_overtime_additional_salary is deliberately NOT scheduled.
+        # Payroll Entry already raises the Over Time Additional Salary via
+        # payroll_entry.create_overtime(); running both double-counts overtime.
 	]
 	# "hourly": [
 	# 	"calicut_textiles.tasks.hourly"

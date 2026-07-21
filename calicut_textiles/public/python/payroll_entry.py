@@ -1,5 +1,5 @@
 import frappe
-from frappe.utils import getdate, add_days, get_time
+from frappe.utils import getdate, add_days, get_time, flt
 from datetime import datetime, timedelta, time
 from collections import defaultdict
 
@@ -204,7 +204,9 @@ def create_overtime(pe, employees, employee_map, checkin_map, holiday_map):
     excluded_shift = settings.shift
     ot_component = settings.ot_component
 
-    early_threshold = (settings.threshold_early_minutes or 0) * 2
+    # Grace period on both sides of the shift. Beyond it, late/early counts in
+    # full minutes from the true shift boundary (not from the end of the grace).
+    grace = settings.threshold_early_minutes or 0
     early_component = settings.early_component
 
     for emp in employees:
@@ -230,12 +232,11 @@ def create_overtime(pe, employees, employee_map, checkin_map, holiday_map):
         if not shift_name or shift_name == excluded_shift:
             continue
 
-        if emp_doc.employment_type == "Part-time":
-            continue
+        is_part_time = emp_doc.employment_type == "Part-time"
 
         shift = frappe.get_doc("Shift Type", shift_name)
         shift_hours = get_shift_hours(shift)
-        if shift_hours <= 0:
+        if shift_hours <= 0 and not is_part_time:
             continue
 
         holidays = holiday_map.get(emp_doc.holiday_list, set())
@@ -251,6 +252,14 @@ def create_overtime(pe, employees, employee_map, checkin_map, holiday_map):
             in_time = times[0]
             out_time = times[-1]
 
+            # Part-timers have no shift to be late for -- every worked minute is
+            # paid at their hourly rate, so the whole span is "overtime".
+            if is_part_time:
+                worked_minutes = minutes(out_time - in_time)
+                if worked_minutes > 0:
+                    total_ot_minutes += worked_minutes
+                continue
+
             # ---------------- HOLIDAY LOGIC ----------------
             if date in holidays:
                 worked_minutes = minutes(out_time - in_time)
@@ -264,8 +273,8 @@ def create_overtime(pe, employees, employee_map, checkin_map, holiday_map):
             normal_start = shift_start - timedelta(minutes=threshold)
             normal_end = shift_end + timedelta(minutes=threshold)
 
-            normal_lateearly_start = shift_start + timedelta(minutes=early_threshold)
-            normal_lateearly_end = shift_end - timedelta(minutes=early_threshold)
+            normal_lateearly_start = shift_start + timedelta(minutes=grace)
+            normal_lateearly_end = shift_end - timedelta(minutes=grace)
 
             # ---------------- OVERTIME ----------------
             if in_time < normal_start:
@@ -277,24 +286,19 @@ def create_overtime(pe, employees, employee_map, checkin_map, holiday_map):
 
             # ----------- EARLY / LATE (NON-HOLIDAY ONLY) -----------
             if in_time > normal_lateearly_start:
-                total_early_late_minutes += early_threshold + minutes(in_time - normal_lateearly_start)
-            if out_time < normal_lateearly_end:
-                total_early_late_minutes += early_threshold + minutes(normal_lateearly_end - out_time)
-            # for row in rows:
-            #     if row.custom_late_early:
-            #         print(row.custom_late_early, row.time)
-            #         custom_minutes = int(row.custom_late_early)
-            #         if custom_minutes > early_threshold:
-            #             print("Adding", custom_minutes)
-            #             total_early_late_minutes += custom_minutes
+                total_early_late_minutes += grace + minutes(in_time - normal_lateearly_start)
+
+            # Staying until the late-evening cutoff waives early-going for the
+            # day, however the shift is defined.
+            waiver = late_exit_waiver_time(date)
+            if out_time < normal_lateearly_end and not (waiver and out_time >= waiver):
+                total_early_late_minutes += grace + minutes(normal_lateearly_end - out_time)
             # ------------------------------------------------------
 
-        rate = get_per_minute_salary(
-            emp,
-            pe.start_date,
-            pe.end_date,
-            shift_hours
-        )
+        if is_part_time:
+            rate = get_hourly_rate(emp) / 60.0
+        else:
+            rate = get_per_minute_salary(emp, pe.start_date, pe.end_date, shift_hours)
 
         if total_ot_minutes > 0:
             create_monthly_overtime(
@@ -302,7 +306,8 @@ def create_overtime(pe, employees, employee_map, checkin_map, holiday_map):
                 pe.end_date,
                 total_ot_minutes,
                 round(rate * total_ot_minutes, 2),
-                ot_component
+                ot_component,
+                is_overtime=True,
             )
 
         if total_early_late_minutes > 0:
@@ -311,14 +316,61 @@ def create_overtime(pe, employees, employee_map, checkin_map, holiday_map):
                 pe.end_date,
                 total_early_late_minutes,
                 round(rate * total_early_late_minutes, 2),
-                early_component
+                early_component,
+                is_overtime=False,
             )
 
 # =====================================================
 # ATTENDANCE / LEAVE
 # =====================================================
+def clear_system_generated_attendance(emp, start, end):
+    """Drop the Absent/leave rows a previous run created for this period.
+
+    Punches are re-synced from CrossChex on demand, and the HR manager edits or
+    adds IN/OUT times there regularly. A day marked Absent by an earlier run must
+    stop being Absent once a punch appears for it, so every run rebuilds these
+    rows from the current check-in data. Only rows this code created
+    (custom_is_system_generated) are touched -- anything entered by hand stays.
+    """
+    for attendance in frappe.get_all(
+        "Attendance",
+        filters={
+            "employee": emp,
+            "attendance_date": ["between", [start, end]],
+            "custom_is_system_generated": 1,
+            "docstatus": ["<", 2],
+        },
+        pluck="name",
+    ):
+        doc = frappe.get_doc("Attendance", attendance)
+        doc.flags.ignore_permissions = True
+        if doc.docstatus == 1:
+            doc.cancel()
+        doc.delete(ignore_permissions=True)
+
+    for leave in frappe.get_all(
+        "Leave Application",
+        filters={
+            "employee": emp,
+            "from_date": [">=", start],
+            "to_date": ["<=", end],
+            "custom_is_system_generated": 1,
+            "docstatus": ["<", 2],
+        },
+        pluck="name",
+    ):
+        doc = frappe.get_doc("Leave Application", leave)
+        doc.flags.ignore_permissions = True
+        if doc.docstatus == 1:
+            doc.cancel()
+        doc.delete(ignore_permissions=True)
+
+
 def process_attendance(emp, start, end, employee_map, holiday_map, checkin_map):
     leave_type = get_employee_leave_type(emp, start, end)
+
+    # Rebuild from scratch so re-running after a check-in re-sync is correct.
+    clear_system_generated_attendance(emp, start, end)
 
     holidays = holiday_map.get(
         employee_map[emp].holiday_list,
@@ -434,6 +486,26 @@ def get_shift_hours(shift):
 def minutes(delta):
     return int(delta.total_seconds() / 60)
 
+def late_exit_waiver_time(date):
+    """Datetime past which leaving is never treated as early-going, or None."""
+    cutoff = frappe.db.get_single_value("Calicut Textiles Settings", "early_waiver_after_time")
+    if not cutoff:
+        return None
+    return datetime.combine(date, to_time(cutoff))
+
+
+def get_hourly_rate(emp):
+    """Hourly rate for part-timers, from their Salary Structure Assignment."""
+    return flt(
+        frappe.db.get_value(
+            "Salary Structure Assignment",
+            {"employee": emp, "docstatus": 1},
+            "custom_hourly_rate",
+            order_by="from_date desc",
+        )
+    )
+
+
 def get_per_minute_salary(emp, start, end, shift_hours):
     base = frappe.db.get_value(
         "Salary Structure Assignment",
@@ -444,8 +516,10 @@ def get_per_minute_salary(emp, start, end, shift_hours):
     if not base:
         return 0
 
-    days = (getdate(end) - getdate(start)).days + 1
-    return base / (days * shift_hours * 60)
+    # Per-day salary is always gross/30, independent of the calendar length of
+    # the month. Dividing by the real day count made OT and late/early ~3% light
+    # in 31-day months and ~7% heavy in February.
+    return base / (30 * shift_hours * 60)
 
 # =====================================================
 # DOCUMENT CREATORS
@@ -472,7 +546,7 @@ def create_monthly_additional_salary(emp, date, amount, component):
     doc.docstatus = 1
     doc.insert(ignore_permissions=True)
 
-def create_monthly_overtime(emp, date, minutes, amount, component):
+def create_monthly_overtime(emp, date, minutes, amount, component, is_overtime=True):
     existing = frappe.get_all(
         "Additional Salary",
         filters={
@@ -494,11 +568,17 @@ def create_monthly_overtime(emp, date, minutes, amount, component):
     if amount <= 0:
         return
     doc = frappe.new_doc("Additional Salary")
-    doc.employee = emp,
+    doc.employee = emp  # was `emp,` -- the trailing comma made this a tuple
     doc.custom_is_system_generated = 1
     doc.salary_component = component
-    doc.custom_is_overtime = 1
-    doc.custom_ot_min = minutes
+    # Flag which kind of row this is. Late/Early was previously also stamped
+    # custom_is_overtime=1, and custom_is_late_early was never set at all.
+    if is_overtime:
+        doc.custom_is_overtime = 1
+        doc.custom_ot_min = minutes
+    else:
+        doc.custom_is_late_early = 1
+        doc.custom_late_early_min = minutes
     doc.amount = amount
     doc.payroll_date = date
     doc.docstatus = 1

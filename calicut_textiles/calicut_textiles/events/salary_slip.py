@@ -1,104 +1,110 @@
 import frappe
-from frappe.utils import getdate, month_diff
-# from hrms.payroll.doctype.salary_slip.salary_slip import get_working_days_details
+from frappe.utils import flt, get_last_day, getdate
 
 
-def before_save(doc, method):
-    if doc.employee and doc.start_date:
-        without_pay = frappe.db.get_list(
-            "Leave Application",
-            filters={
-                "employee": doc.employee,
-                "leave_type": "Leave Without Pay",
-                "status": "Approved",
-                "from_date": [">=", doc.start_date],
-                "to_date": ["<=", doc.end_date]
-            },
-            fields=["total_leave_days"]
+def get_base(employee, end_date):
+    """Monthly gross from the employee's latest Salary Structure Assignment."""
+    return flt(
+        frappe.db.get_value(
+            "Salary Structure Assignment",
+            {"employee": employee, "from_date": ["<=", end_date], "docstatus": 1},
+            "base",
+            order_by="from_date desc",
         )
-        
-        total_without_pay_days = sum(leave.total_leave_days for leave in without_pay) if without_pay else 0
-      
-        per_day = frappe.db.get_value("Salary Structure Assignment", {"employee": doc.employee}, "custom_leave_encashment_amount_per_day", order_by="creation desc")
-        
-        lop = per_day * total_without_pay_days
-       
-        deducted_gross = calculate_deducted_gross(doc.employee, doc.start_date) - lop
-        
-        if deducted_gross:
-            doc.custom_deducted_gross = deducted_gross
-            doc.custom_deducted_basic = deducted_gross * 62.5 / 100
-            doc.custom_deducted_da = deducted_gross * 40 / 100
-        
+    )
+
+
+def get_late_early_amount(employee, start_date, end_date):
+    """Late/Early deduction raised for this month by the Payroll Entry."""
+    component = frappe.db.get_single_value("Calicut Textiles Settings", "early_component")
+    if not component:
+        return 0.0
+
+    rows = frappe.get_all(
+        "Additional Salary",
+        filters={
+            "employee": employee,
+            "salary_component": component,
+            "payroll_date": ["between", [start_date, end_date]],
+            "docstatus": 1,
+        },
+        pluck="amount",
+    )
+    return sum(flt(a) for a in rows)
+
+
+def set_deducted_gross(doc):
+    """Set the ESI/PF base fields that the salary structure formulas read.
+
+    Mirrors the payroll workbook:
+        per day       = gross / 30
+        LOP           = unpaid absent days x per day
+        ESI salary  T = gross - (LOP + late/early)
+        PF salary     = T * 0.625 + (T * 0.625) * 0.40   ->  T * 0.875
+
+    Returns True if the figures moved, so the caller knows to re-total the slip.
+    """
+    if not (doc.employee and doc.start_date):
+        return False
+
+    base = get_base(doc.employee, doc.end_date)
+    if not base:
+        return False
+
+    per_day = base / 30.0
+    # absent_days is 0 until get_working_days_details() has run, so this is a
+    # seed value on before_insert and the real figure on validate.
+    unpaid_days = flt(doc.absent_days) + flt(doc.leave_without_pay)
+    lop = unpaid_days * per_day
+    late_early = get_late_early_amount(doc.employee, doc.start_date, doc.end_date)
+
+    deducted_gross = base - lop - late_early
+    deducted_basic = deducted_gross * 0.625
+    # DA is 40% of BASIC, not 40% of gross. The previous `deducted_gross * 40 / 100`
+    # made the PF base 1.025 x T instead of 0.875 x T and over-deducted PF.
+    deducted_da = deducted_basic * 0.40
+
+    changed = flt(doc.custom_deducted_gross, 2) != flt(deducted_gross, 2)
+
+    doc.custom_deducted_gross = deducted_gross
+    doc.custom_deducted_basic = deducted_basic
+    doc.custom_deducted_da = deducted_da
+    doc.custom_deducted_per_day = per_day
+
+    return changed
+
+
+def before_save(doc, method=None):
+    """Seed the ESI/PF base before the first formula evaluation."""
+    set_deducted_gross(doc)
+
 
 @frappe.whitelist()
-def add_pf_esi_deduction(doc, method):
-    if doc.employee and doc.start_date:
-        without_pay = frappe.db.get_list(
-            "Leave Application",
-            filters={
-                "employee": doc.employee,
-                "leave_type": "Leave Without Pay",
-                "status": "Approved",
-                "from_date": [">=", doc.start_date],
-                "to_date": ["<=", doc.end_date]
-            },
-            fields=["total_leave_days"]
-        )
-        total_without_pay_days = sum(leave.total_leave_days for leave in without_pay) if without_pay else 0
-      
-        per_day = frappe.db.get_value("Salary Structure Assignment", {"employee": doc.employee}, "custom_leave_encashment_amount_per_day", order_by="creation desc")
-        
-        lop = per_day * total_without_pay_days
-        deducted_gross = calculate_deducted_gross(doc.employee, doc.start_date) - lop
-        custom_deducted_basic = deducted_gross * 62.5 / 100
-        custom_deducted_da = deducted_gross * 40 / 100
-        pf_amount = custom_deducted_basic + custom_deducted_da * 0.12 if (custom_deducted_basic + custom_deducted_da) * 0.12 < 0.12 * 15000 else 0.12 * 15000
-        esi_amount = deducted_gross * 0.75 / 100 if deducted_gross * 0.75 / 100 < 0.75 * 21000/100 else 0.75 * 21000/100
-        existing_pf = next((e for e in doc.earnings if e.salary_component == "Provident Fund"), None)
-        if existing_pf:
-            existing_pf.amount = pf_amount
-        else:
-            doc.append("earnings", {"salary_component": "Provident Fund", "amount": pf_amount})
-        existing_esi = next((e for e in doc.earnings if e.salary_component == "ESI"), None)
-        if existing_esi:
-            existing_esi.amount = esi_amount
-        else:
-            doc.append("earnings", {"salary_component": "ESI", "amount": esi_amount})
+def add_pf_esi_deduction(doc, method=None):
+    """Recompute ESI/PF once the real attendance figures are known.
+
+    Runs after Salary Slip.validate(), by which point get_working_days_details()
+    has set absent_days and the structure formulas have been evaluated once against
+    the seed figures. Re-deriving the base and re-running calculate_net_pay() lets
+    each structure's own ESI/PF formulas produce the final numbers -- so employees
+    on the "Basic" / "w/o PF" / "w/o WF" structures correctly get no such rows.
+
+    The previous version appended PF and ESI to `earnings` (paying them out rather
+    than deducting them) and applied them to every employee regardless of structure.
+
+    calculate_net_pay() updates component rows in place (see update_component_row),
+    so the second pass re-values rows rather than duplicating them.
+    """
+    if not doc.salary_structure:
+        return
+
+    if set_deducted_gross(doc):
+        doc.calculate_net_pay()
 
 
 @frappe.whitelist()
 def calculate_deducted_gross(employee, start_date):
-    base_amount = 0
-    deducted_gross = 0
-
-    late_component = frappe.db.get_value("Calicut Textiles Settings", None, "early_component")
-
-    base_amount = frappe.db.get_value("Salary Structure Assignment", {"employee": employee}, "base", order_by="creation desc")
-
-    start_date = getdate(start_date)
-
-    additional_salaries = frappe.get_all(
-        "Additional Salary", 
-        filters={
-            "employee": employee,
-            "Salary_component": late_component,
-            "custom_is_late_early": 1,
-            "docstatus": 1
-        },
-        fields=["amount", "payroll_date"]
-    )
-
-    lop = 0  
-    for additional_salary in additional_salaries:
-        payroll_date = getdate(additional_salary.get('payroll_date'))
-        
-        if payroll_date and payroll_date.month == start_date.month and payroll_date.year == start_date.year:
-            lop = additional_salary.get('amount')
-
-    if lop:
-        deducted_gross = base_amount - lop
-    else:
-        deducted_gross = base_amount
-
-    return deducted_gross
+    """Kept for anything calling this directly."""
+    end_date = get_last_day(getdate(start_date))
+    base = get_base(employee, end_date)
+    return base - get_late_early_amount(employee, getdate(start_date), end_date)

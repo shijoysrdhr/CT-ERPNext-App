@@ -1,40 +1,14 @@
+// The Deducted Gross / Basic / DA figures are owned by the server:
+// calicut_textiles.calicut_textiles.events.salary_slip.set_deducted_gross()
+// runs on before_insert and again on validate, once absent_days is known.
+//
+// This form previously recomputed them client-side on every employee/start_date/
+// end_date change, overwriting the server's numbers with wrong ones:
+//   - DA was gross * 40% instead of BASIC * 40%, inflating the PF base
+//   - leave_without_pay (a DAY COUNT) was subtracted from a RUPEE amount
+//   - per-day used payment_days rather than the fixed 30
+// Leave the fields to the server; they refresh on save.
+
 frappe.ui.form.on('Salary Slip', {
-    employee: function(frm) {
-        if(frm.doc.employee && frm.doc.start_date) {
-            frm.trigger("deducted_gross");  
-        }
-    },
-
-    start_date: function(frm) {
-        if(frm.doc.employee && frm.doc.start_date) {
-            frm.trigger("deducted_gross");  
-        }
-    },
-
-    end_date: function(frm) {
-        if(frm.doc.employee && frm.doc.start_date) {
-            frm.trigger("deducted_gross");  
-        }
-    },
-
-
-    deducted_gross: function(frm) {
-            frappe.call({
-                method: "calicut_textiles.calicut_textiles.events.salary_slip.calculate_deducted_gross",
-                args: {
-                    employee: frm.doc.employee,
-                    start_date: frm.doc.start_date  
-                },
-                callback: function(r) {
-                    if(r.message) {
-                        let deducted_gross = r.message - frm.doc.leave_without_pay;
-                        frm.set_value('custom_deducted_gross', deducted_gross);
-                        frm.set_value('custom_deducted_per_day', deducted_gross / frm.doc.payment_days);
-                        frm.set_value('custom_deducted_basic', deducted_gross * 62.5 / 100);
-                        frm.set_value('custom_deducted_da', deducted_gross * 40 / 100);
-                    }
-                }
-            });
-    
-    }
+    // intentionally empty
 });
