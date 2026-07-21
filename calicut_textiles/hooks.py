@@ -209,6 +209,10 @@ scheduler_events = {
 	# ],
 	"daily": [
 		"calicut_textiles.calicut_textiles.events.encashment.process_monthly_leave_encashment",
+        # Re-reads a trailing window from CrossChex rather than only new
+        # punches, so times the HR manager corrected after the fact are
+        # picked up here too.
+        "calicut_textiles.calicut_textiles.events.crosschex.sync_recent",
         # process_monthly_overtime_additional_salary is deliberately NOT scheduled.
         # Payroll Entry already raises the Over Time Additional Salary via
         # payroll_entry.create_overtime(); running both double-counts overtime.
