@@ -2,6 +2,18 @@
 
 {% block title %}Cash Approvals{% endblock %}
 
+{% block head_include %}
+{{ super() }}
+<!-- Add-to-Home-Screen / PWA: launch full-screen with the CLT icon -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Cash Approvals">
+<meta name="theme-color" content="#ffffff">
+<link rel="apple-touch-icon" href="/files/clt-p.png">
+<link rel="manifest" href="/assets/calicut_textiles/cash-approvals.webmanifest">
+{% endblock %}
+
 {% block navbar %}
 <nav class="ct-appbar">
   <div class="ct-appbar-left">
@@ -64,6 +76,9 @@
 .ct-h-top{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
 .ct-h-amount{font-weight:700;color:#111827}
 .ct-h-badge{font-size:.62rem;font-weight:600;text-transform:uppercase;color:#6b7280}
+.ct-h-status{font-size:.6rem;font-weight:700;text-transform:uppercase;letter-spacing:.03em;padding:2px 8px;border-radius:999px;white-space:nowrap}
+.ct-h-status.paid{background:#dcfce7;color:#15803d}
+.ct-h-status.topay{background:#e0e7ff;color:#3730a3}
 .ct-h-line{color:#6b7280;font-size:.82rem;margin-top:3px;word-break:break-word}
 .ct-h-meta{color:#9ca3af;font-size:.72rem;margin-top:6px}
 .ct-h-check{color:#16a34a;font-weight:700;margin-right:4px}
@@ -83,6 +98,8 @@
 .ct-amount{font-size:1.5rem;font-weight:700;color:#111827;line-height:1.1}
 .ct-badge{font-size:.68rem;font-weight:600;text-transform:uppercase;letter-spacing:.03em;padding:4px 9px;border-radius:999px;background:#eef2ff;color:#4338ca;white-space:nowrap}
 .ct-badge.je{background:#ecfdf5;color:#047857}
+.ct-stage{display:inline-block;margin-top:9px;font-size:.66rem;font-weight:600;text-transform:uppercase;letter-spacing:.03em;padding:3px 9px;border-radius:999px;background:#fef3c7;color:#92400e}
+.ct-stage.pay{background:#e0e7ff;color:#3730a3}
 .ct-primary{margin-top:8px;font-weight:600;color:#1f2937}
 .ct-secondary{color:#6b7280;font-size:.88rem;margin-top:3px;word-break:break-word}
 .ct-remarks{margin-top:10px;padding:10px 12px;background:#f9fafb;border:1px solid #f0f1f3;border-radius:8px;color:#4b5563;font-size:.83rem;line-height:1.4;white-space:pre-wrap;word-break:break-word}
@@ -94,6 +111,8 @@
 .ct-approve:active{background:#15803d}
 .ct-reject{background:#fff;color:#dc2626;border:1px solid #fecaca}
 .ct-reject:active{background:#fef2f2}
+.ct-paid{background:#4338ca;color:#fff}
+.ct-paid:active{background:#3730a3}
 .ct-empty{text-align:center;color:#6b7280;padding:48px 16px}
 .ct-empty-ic{font-size:2.4rem;color:#16a34a;margin-bottom:10px}
 .ct-spin{width:30px;height:30px;border:3px solid #e5e7eb;border-top-color:#6366f1;border-radius:50%;margin:0 auto;animation:ctspin .8s linear infinite}
@@ -160,7 +179,8 @@ frappe.ready(function () {
       args: { doctype: cardEl.dataset.doctype, name: cardEl.dataset.name, action: action, reason: reason },
       callback: function (r) {
         if (r && r.message && r.message.ok) {
-          toast(cardEl.dataset.name + ' ' + (action === 'Approve' ? 'approved' : 'rejected'));
+          const verb = { 'Approve': 'approved', 'Reject': 'rejected', 'Mark Paid': 'marked paid' }[action] || 'updated';
+          toast(cardEl.dataset.name + ' ' + verb);
           approvedLoaded = false; // history changed; reload next time drawer opens
           cardEl.style.transition = '.25s'; cardEl.style.opacity = '0';
           setTimeout(load, 350);
@@ -213,11 +233,12 @@ frappe.ready(function () {
   }
 
   function hcard(it) {
-    const label = it.doctype === 'Journal Entry' ? 'Journal' : 'Payment';
+    const paid = it.status === 'Paid';
+    const status = `<span class="ct-h-status ${paid ? 'paid' : 'topay'}">${paid ? 'Paid' : 'To Pay'}</span>`;
     return `<div class="ct-h-card">
-        <div class="ct-h-top"><span class="ct-h-amount"><span class="ct-h-check">✓</span>${esc(it.amount_str)}</span><span class="ct-h-badge">${label}</span></div>
+        <div class="ct-h-top"><span class="ct-h-amount">${esc(it.amount_str)}</span>${status}</div>
         <div class="ct-h-line">${esc(it.primary)}${it.secondary ? ' · ' + esc(it.secondary) : ''}</div>
-        <div class="ct-h-meta">${esc(it.name)} · ${esc(it.date)} · approved by ${esc(it.approved_by)}</div>
+        <div class="ct-h-meta">${esc(it.name)} · ${esc(it.date)} · by ${esc(it.created_by)}</div>
       </div>`;
   }
 
@@ -231,7 +252,7 @@ frappe.ready(function () {
         const items = (r && r.message && r.message.items) || [];
         drawerBody.innerHTML = items.length
           ? items.map(hcard).join('')
-          : '<div class="ct-empty">No approved entries yet.</div>';
+          : '<div class="ct-empty">No paid entries yet.</div>';
       },
       error: function () { drawerBody.innerHTML = '<div class="ct-empty">Failed to load.</div>'; }
     });

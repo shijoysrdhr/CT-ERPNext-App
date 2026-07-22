@@ -10,7 +10,10 @@ from frappe import _
 from frappe.model.workflow import apply_workflow, get_transitions
 from frappe.utils import flt, fmt_money, formatdate, get_fullname
 
-PENDING_STATE = "Pending Approval"
+# This page is for APPROVAL users only - it surfaces just the approval stage.
+# Physical payout (Mark Paid on the 'Unpaid' state) is done from the ERPNext Desk
+# by the maker, not here.
+PENDING_STATES = ("Pending Approval",)
 DOCTYPES = ("Payment Entry", "Journal Entry")
 ACTIONS = ("Approve", "Reject")
 
@@ -57,17 +60,25 @@ def _summarize(doc, actions):
         "secondary": secondary,
         "remarks": (remarks or "").strip(),
         "created_by": get_fullname(doc.owner),
+        "state": doc.workflow_state,
+        # which stage this card sits at, so the UI can label it
+        "stage": "payment" if doc.workflow_state == "Unpaid" else "approval",
         "actions": actions,
     }
 
 
 @frappe.whitelist()
 def get_pending_approvals():
-    """Pending cash docs the CURRENT user is allowed to act on."""
+    """Cash docs awaiting approval that the CURRENT user can act on.
+
+    Only the 'Pending Approval' stage (Approve/Reject) - this page is for
+    approval users. get_transitions still self-filters by role and the <=5000
+    tier, so each approver sees only what they may act on.
+    """
     items = []
     for dt in DOCTYPES:
         names = frappe.get_all(
-            dt, filters={"workflow_state": PENDING_STATE, "docstatus": 0}, pluck="name"
+            dt, filters={"workflow_state": ["in", PENDING_STATES], "docstatus": 0}, pluck="name"
         )
         for name in names:
             doc = frappe.get_doc(dt, name)
@@ -91,20 +102,24 @@ def get_pending_approvals():
 
 @frappe.whitelist()
 def get_recent_approved(limit=20):
-    """Last N cash entries that went through approval (state = Approved).
+    """Last N cash entries that have cleared approval.
 
-    Filtered to genuine cash items (Pay+Cash for PE, cash-flag for JE) so the
-    direct-submitted non-cash docs - which also land in 'Approved' - are excluded.
+    Spans both post-approval states so an approver can see what they approved
+    and whether it has been physically paid yet:
+      - 'Unpaid' (approved, awaiting payout)  -> status "To Pay"
+      - 'Paid'   (cash disbursed, GL posted)  -> status "Paid"
+    Non-cash direct-submits land in 'Approved', so they are excluded.
     """
     limit = min(int(limit or 20), 50)
+    states = ["Unpaid", "Paid"]
     rows = []
 
     pe = frappe.get_all(
         "Payment Entry",
-        filters={"workflow_state": "Approved", "docstatus": 1,
+        filters={"workflow_state": ["in", states],
                  "payment_type": "Pay", "mode_of_payment": ["in", ["Cash", "Petty Cash"]]},
-        fields=["name", "paid_amount", "payment_type", "mode_of_payment",
-                "party_name", "party", "posting_date", "owner", "modified", "modified_by"],
+        fields=["name", "paid_amount", "payment_type", "mode_of_payment", "workflow_state",
+                "party_name", "party", "posting_date", "owner", "modified"],
         order_by="modified desc", limit=limit,
     )
     for d in pe:
@@ -112,15 +127,15 @@ def get_recent_approved(limit=20):
             "doctype": "Payment Entry", "name": d.name, "amount": flt(d.paid_amount),
             "primary": " · ".join(filter(None, [d.payment_type, d.mode_of_payment])),
             "secondary": d.party_name or d.party or "",
-            "owner": d.owner, "modified": d.modified, "modified_by": d.modified_by,
+            "state": d.workflow_state, "owner": d.owner, "modified": d.modified,
             "posting_date": d.posting_date,
         })
 
     je = frappe.get_all(
         "Journal Entry",
-        filters={"workflow_state": "Approved", "docstatus": 1, "custom_is_cash_outflow": 1},
+        filters={"workflow_state": ["in", states], "custom_is_cash_outflow": 1},
         fields=["name", "total_debit", "voucher_type", "cheque_no", "user_remark",
-                "posting_date", "owner", "modified", "modified_by"],
+                "workflow_state", "posting_date", "owner", "modified"],
         order_by="modified desc", limit=limit,
     )
     for d in je:
@@ -128,7 +143,7 @@ def get_recent_approved(limit=20):
             "doctype": "Journal Entry", "name": d.name, "amount": flt(d.total_debit),
             "primary": d.voucher_type,
             "secondary": d.user_remark or d.cheque_no or "",
-            "owner": d.owner, "modified": d.modified, "modified_by": d.modified_by,
+            "state": d.workflow_state, "owner": d.owner, "modified": d.modified,
             "posting_date": d.posting_date,
         })
 
@@ -142,7 +157,7 @@ def get_recent_approved(limit=20):
             "amount_str": fmt_money(r["amount"], currency=currency),
             "primary": r["primary"], "secondary": r["secondary"],
             "date": formatdate(r["posting_date"]),
-            "approved_by": get_fullname(r["modified_by"]),
+            "status": "Paid" if r["state"] == "Paid" else "To Pay",
             "created_by": get_fullname(r["owner"]),
         } for r in rows]
     }
