@@ -103,21 +103,27 @@ def _build_rows(filters):
         in_time = clean[0].replace(second=0, microsecond=0)
         out_time = clean[-1].replace(second=0, microsecond=0)
 
-        # Gaps between the inner pairs: (2nd,3rd), (4th,5th)... Each is time the
-        # employee was punched out during the day but is still being paid for.
-        break_minutes = sum(
-            (clean[i + 1] - clean[i]).total_seconds() / 60.0
-            for i in range(1, count - 1, 2)
-        )
-
         span = (out_time - in_time).total_seconds() / 60.0 if count > 1 else 0.0
 
         if count % 2:
+            # Which punch is missing is unknowable, so the punches cannot be
+            # paired and any break figure would be a guess. Leave it blank and
+            # show the raw times instead -- HR decides what happened.
             issue = "Missing Punch"
-        elif break_minutes >= min_break and break_minutes > 0:
-            issue = "Break Recorded"
+            break_minutes = worked_minutes = None
         else:
-            issue = ""
+            # Gaps between the inner pairs: (2nd,3rd), (4th,5th)... Each is time
+            # the employee was punched out but is still being paid for.
+            break_minutes = sum(
+                (clean[i + 1] - clean[i]).total_seconds() / 60.0
+                for i in range(1, count - 1, 2)
+            )
+            worked_minutes = span - break_minutes
+            issue = (
+                "Break Recorded"
+                if break_minutes > 0 and break_minutes >= min_break
+                else ""
+            )
 
         rows.append(
             {
@@ -130,7 +136,7 @@ def _build_rows(filters):
                 "out_time": out_time.time() if count > 1 else None,
                 "span_minutes": span,
                 "break_minutes": break_minutes,
-                "worked_minutes": span - break_minutes,
+                "worked_minutes": worked_minutes,
                 "issue": issue,
                 "punch_times": ", ".join(t.strftime("%H:%M") for t in clean),
             }
@@ -145,7 +151,7 @@ def _build_rows(filters):
 
 def _summary(rows):
     missing = sum(1 for r in rows if r["issue"] == "Missing Punch")
-    breaks = [r for r in rows if r["break_minutes"] > 0]
+    breaks = [r for r in rows if r["break_minutes"]]
     total_break = sum(r["break_minutes"] for r in breaks)
 
     return [
