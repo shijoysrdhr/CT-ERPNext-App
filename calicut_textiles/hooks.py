@@ -172,7 +172,13 @@ doc_events = {
     },
 
     "Sales Invoice": {
-        "before_validate": "calicut_textiles.calicut_textiles.events.sales_invoice.enforce_counter_rt_inclusive_tax",
+        "before_validate": [
+            "calicut_textiles.calicut_textiles.events.sales_invoice.enforce_counter_rt_inclusive_tax",
+            # Must run AFTER the inclusive flags are set: apply_freight_charge
+            # reads whether the template is inclusive to decide if the entered
+            # amount needs converting to its pre-tax value.
+            "calicut_textiles.calicut_textiles.events.sales_invoice.apply_freight_charge",
+        ],
     },
 
     "Serial and Batch Bundle": {

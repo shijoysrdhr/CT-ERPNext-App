@@ -498,4 +498,61 @@
     }
   }
 
+  // ===== Freight field -> Freight Outward Charges tax row =====
+  // The cashier types what the customer pays for freight, GST included. An
+  // "Actual" charge cannot itself be inclusive, so on a "- Inc" template the row
+  // must hold the pre-tax value; the GST rows ("On Previous Row Total" pointing
+  // at the freight row) add the tax back. This mirrors the authoritative server
+  // hook (events.sales_invoice.apply_freight_charge) purely so the cashier sees
+  // the total move before saving -- the server is what actually decides.
+  frappe.ui.form.on('Sales Invoice', {
+    custom_freight_amount: preview_freight,
+    taxes_and_charges: preview_freight,
+  });
+
+  function invoice_gst_rate(frm) {
+    const gst_accounts = (frm.doc.taxes || [])
+      .filter(t => t.account_head && t.account_head.indexOf('GST') !== -1)
+      .map(t => t.account_head);
+    if (!gst_accounts.length) return null;
+
+    const rates = new Set();
+    (frm.doc.items || []).forEach(item => {
+      if (!item.item_tax_rate) return;
+      let map;
+      try { map = JSON.parse(item.item_tax_rate); } catch (e) { return; }
+      const rate = gst_accounts.reduce((sum, acc) => sum + flt(map[acc]), 0);
+      if (rate) rates.add(Math.round(rate * 10000) / 10000);
+    });
+    return rates.size === 1 ? [...rates][0] : null;
+  }
+
+  function preview_freight(frm) {
+    const row = (frm.doc.taxes || []).find(
+      t => t.charge_type === 'Actual' && t.account_head && t.account_head.indexOf('Freight') !== -1
+    );
+    if (!row) return;
+
+    const entered = flt(frm.doc.custom_freight_amount);
+    if (!entered) {
+      frappe.model.set_value(row.doctype, row.name, 'tax_amount', 0);
+      return;
+    }
+
+    const inclusive = (frm.doc.taxes_and_charges || '').replace(/\s/g, '').indexOf('-Inc-') !== -1;
+    if (!inclusive) {
+      frappe.model.set_value(row.doctype, row.name, 'tax_amount', entered);
+      return;
+    }
+
+    const rate = invoice_gst_rate(frm);
+    if (rate === null) {
+      // Leave it to the server to refuse, with its clearer message.
+      return;
+    }
+    frappe.model.set_value(
+      row.doctype, row.name, 'tax_amount', flt(entered / (1 + rate / 100), 2)
+    );
+  }
+
 })();
