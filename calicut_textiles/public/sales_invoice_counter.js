@@ -9,7 +9,7 @@
 //   - Counter from SO to SI            (already duplicated inside Counter Defaults; kept here once)
 //   - Paid amount check in SI          (overpayment alert)
 //   - Sales invoice rate check after batch change
-//   - Sales Invoice Add Freight Button
+//   - (Add Freight button removed 2026-07-23; the Freight field replaced it)
 //
 // NOTE: server-side correctness for GST-inclusive Counter RT billing is guaranteed by the
 // before_validate hook `enforce_counter_rt_inclusive_tax`. The inclusive swap below is only
@@ -460,43 +460,10 @@
       : meta._ct_orig_default_pf;
   }
 
-  // ===== Add Freight button (from "Sales Invoice Add Freight Button") =====
-  frappe.ui.form.on('Sales Invoice', {
-    refresh: add_freight_button,
-    pos_profile: add_freight_button
-  });
-  function add_freight_button(frm) {
-    if (frm.doc.pos_profile !== 'Counter RT') return;
-    if (frm.doc.docstatus !== 0) return;
-    const grid = frm.fields_dict.items.grid;
-    const $btn = grid.add_custom_button(__('Add Freight'), function () {
-      const row = frm.add_child('items', { item_code: 'IAF64174', qty: 1 });
-      frm.script_manager.trigger('item_code', row.doctype, row.name).then(function () {
-        frm.refresh_field('items');
-        frappe.show_alert({ message: __('Freight row added — enter the amount'), indicator: 'green' });
-        // Auto-focus the Rate cell of the new freight row so the cashier can type the amount.
-        setTimeout(function () {
-          try {
-            const grid_row = frm.fields_dict.items.grid.grid_rows_by_docname[row.name];
-            if (!grid_row) return;
-            grid_row.toggle_editable_row(true);
-            const col = grid_row.columns && grid_row.columns.rate;
-            const $input = col && col.field && col.field.$input;
-            if ($input && $input.length) {
-              $input.focus();
-              $input.select();
-            }
-          } catch (e) { /* focus is best-effort */ }
-        }, 300);
-      });
-    });
-    const $anchor = grid.grid_buttons.find('.grid-add-multiple-rows');
-    if ($anchor.length) {
-      $btn.insertAfter($anchor);
-    } else {
-      $btn.appendTo(grid.grid_buttons);
-    }
-  }
+  // The "Add Freight" button that inserted IAF64174 as a line item was removed
+  // once the Freight field started filling the Freight Outward Charges tax row
+  // instead. Two ways to enter freight would have produced two different
+  // invoices from the same amount.
 
   // ===== Freight field -> Freight Outward Charges tax row =====
   // The cashier types what the customer pays for freight, GST included. An

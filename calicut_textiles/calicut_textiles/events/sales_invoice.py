@@ -112,17 +112,22 @@ def invoice_gst_rate(doc):
 	SGST 2.5 + CGST 2.5 = 5, and an out-state one takes IGST 5 = 5. Freight has
 	to be taxed at the same rate as the goods it carries.
 
-	Returns None when the items disagree, rather than guessing: no counter
-	invoice has ever mixed rates, so a mixed one means something is wrong and
-	silently picking a rate would mis-tax the freight.
+	Returns None only when the items genuinely DISAGREE, rather than guessing:
+	no counter invoice has ever mixed rates, so a mixed one means something is
+	wrong and silently picking a rate would mis-tax the freight.
+
+	When no item carries a tax template at all -- around 250 counter invoices a
+	quarter -- fall back to the nominal rates on the invoice's own GST rows.
+	That is the rate those goods are being taxed at anyway, and refusing here
+	would block the sale outright.
 	"""
-	gst_accounts = [
-		t.account_head
-		for t in doc.get("taxes") or []
-		if t.account_head and "GST" in t.account_head
+	gst_rows = [
+		t for t in doc.get("taxes") or [] if t.account_head and "GST" in t.account_head
 	]
-	if not gst_accounts:
+	if not gst_rows:
 		return None
+
+	gst_accounts = [t.account_head for t in gst_rows]
 
 	rates = set()
 	for item in doc.get("items") or []:
@@ -138,6 +143,10 @@ def invoice_gst_rate(doc):
 
 	if len(rates) == 1:
 		return rates.pop()
+	if not rates:
+		# no item-level rates -- use what the tax table itself charges
+		fallback = sum(flt(t.rate) for t in gst_rows)
+		return round(fallback, 4) or None
 	return None
 
 
@@ -183,10 +192,11 @@ def apply_freight_charge(doc, method=None):
 	if rate is None:
 		frappe.throw(
 			_(
-				"Cannot work out the GST rate for freight: the items carry more than "
-				"one rate, or none at all. Enter freight as a line item instead."
+				"Freight cannot be split out because the items on this invoice carry "
+				"different GST rates, so there is no single rate to tax freight at. "
+				"Clear the Freight field and add freight as a line item instead."
 			),
-			title=_("Freight rate is ambiguous"),
+			title=_("Mixed GST rates"),
 		)
 
 	freight_row.tax_amount = flt(entered / (1 + rate / 100.0), 2)
