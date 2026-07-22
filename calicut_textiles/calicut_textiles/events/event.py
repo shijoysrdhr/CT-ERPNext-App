@@ -24,10 +24,22 @@ def convert_date_to_code(sanforize):
     return result
 
 def custom_date_code(doc, method):
-    if isinstance(doc.posting_date, str):
-        posting_date = datetime.strptime(doc.posting_date, '%Y-%m-%d')
+    # Serial and Batch Bundle carried `posting_date` until ERPNext 15.11x, which
+    # replaced it with `posting_datetime`. Reading the old field raised
+    # AttributeError on before_save and blocked submitting any Sales Invoice
+    # holding a batched item -- i.e. most counter sales. Accept whichever field
+    # the installed version provides, and use .get() so a future rename degrades
+    # to "no code" rather than an exception.
+    raw = doc.get("posting_date") or doc.get("posting_datetime")
+    if not raw:
+        return
+
+    if isinstance(raw, str):
+        # posting_date is "YYYY-MM-DD"; posting_datetime adds " HH:MM:SS".
+        # The first ten characters are the date either way.
+        posting_date = datetime.strptime(raw.strip()[:10], '%Y-%m-%d')
     else:
-        posting_date = doc.posting_date
+        posting_date = raw
 
     month_year = posting_date.strftime('%m%y')
 
