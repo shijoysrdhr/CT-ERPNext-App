@@ -302,12 +302,20 @@
     const tmpl = frm.doc.taxes_and_charges;
     if (!tmpl || !RT_INCLUSIVE_NAMES.has(tmpl)) return;
 
-    // Already the clean inclusive structure? (no Actual/freight row; GST rows are
-    // "On Net Total" + included_in_print_rate) -> nothing to do.
+    // Already the clean inclusive structure? Judge that on the GST rows ALONE:
+    // "On Net Total" + included_in_print_rate.
+    //
+    // This used to also demand that no "Actual" row existed, on the theory that a
+    // Freight Actual row meant India Compliance had rebuilt from the exclusive
+    // template. It doesn't -- the INCLUSIVE template ships a Freight Actual row of
+    // its own, so the condition could never hold. Every refresh therefore re-fetched
+    // the taxes table, dirtied the form, and pulled the same Actual row back in:
+    // the invoice returned to "Not Saved" the instant it was saved, forever.
+    // The GST-row checks below are the real discriminator, and non-GST rows are
+    // left alone here exactly as the before_validate server hook leaves them.
     const taxes = frm.doc.taxes || [];
     const gstRows = taxes.filter(t => t.account_head && t.account_head.indexOf('GST') !== -1);
     const clean = gstRows.length
-      && !taxes.some(t => t.charge_type === 'Actual')
       && gstRows.every(t => cint(t.included_in_print_rate) && t.charge_type === 'On Net Total');
     if (clean) return;
 
