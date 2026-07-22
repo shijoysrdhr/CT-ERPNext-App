@@ -34,10 +34,9 @@ doctype_js = {"Purchase Receipt" : "public/purchase_recipt.js",
               "Item" : "public/item.js",
               "Purchase Order" : "public/purchase_order.js",
               "Salary Slip" : "public/salary_slip.js",
-              "Sales Invoice" : "public/sales_invoice.js",
+              "Sales Invoice" : ["public/sales_invoice.js", "public/sales_invoice_counter.js"],
               "Sales Order" : "public/sales_order.js",
               "Employee Checkin" : "public/employee_checkin.js",
-              "Website Item" : "public/website_item.js",
               }
 
 doctype_list_js = {"Item" : "public/item_list.js",
@@ -83,7 +82,7 @@ doctype_list_js = {"Item" : "public/item_list.js",
 # ------------
 
 # before_install = "calicut_textiles.install.before_install"
-after_install = "calicut_textiles.goshop.setup.after_install"
+# after_install moved to the goshop app (storefront category seed)
 
 # Uninstallation
 # ------------
@@ -133,7 +132,6 @@ override_doctype_class = {
 	"Leave Encashment": "calicut_textiles.calicut_textiles.events.encashment.CustomLeaveEncashment",
     "Department": "calicut_textiles.calicut_textiles.events.department.CustomDepartment",
     "Payroll Entry":"calicut_textiles.public.python.payroll_entry.CustomPayrollEntry",
-    "Website Item": "calicut_textiles.goshop.overrides.website_item.CTWebsiteItem",
 }
 
 # Document Events
@@ -173,6 +171,10 @@ doc_events = {
 
     },
 
+    "Sales Invoice": {
+        "before_validate": "calicut_textiles.calicut_textiles.events.sales_invoice.enforce_counter_rt_inclusive_tax",
+    },
+
     "Serial and Batch Bundle": {
         "before_save":["calicut_textiles.calicut_textiles.events.event.custom_date_code"],
         "on_submit": "calicut_textiles.calicut_textiles.events.batch.update_qty"
@@ -186,10 +188,6 @@ doc_events = {
     },
     "Employee Checkin": {
         "before_save": "calicut_textiles.calicut_textiles.events.employee_checkin.update_employee_checkin_fields"
-    },
-    "Stock Ledger Entry": {
-        "on_submit": "calicut_textiles.api.webshop.refresh_website_item_batch_qty",
-        "on_cancel": "calicut_textiles.api.webshop.refresh_website_item_batch_qty",
     },
     # "Payment Entry": {
     #     "before_delete": "calicut_textiles.calicut_textiles.doctype.daliy_cash_entry.daliy_cash_entry.delete_linked_daliy_cash_entry"
