@@ -79,6 +79,28 @@ def scan_barcode(search_value: str) -> BarcodeScanResult:
 	return {}
 
 
+def enforce_counter_rt_inclusive_tax(doc, method=None):
+	"""Counter RT (retail counter) bills at GST-inclusive MRP.
+
+	India Compliance rebuilds the taxes table by place of supply and the
+	Client Script swaps the template name to its ``- Inc -`` twin, but a
+	name-only swap doesn't re-fetch the child rows' ``included_in_print_rate``
+	flag (see RT2607575: inclusive template, exclusive rows -> overcharged).
+
+	Runs on before_validate (before the controller calculates totals and
+	before IC derives per-item GST amounts) so the whole downstream pass is
+	consistent: for any Counter RT invoice it forces the GST output-tax rows
+	to inclusive, regardless of which template name or client timing won.
+	"""
+	if doc.get("pos_profile") != "Counter RT":
+		return
+
+	for tax in doc.get("taxes") or []:
+		# GST output-tax rows only (SGST/CGST/IGST); leave Freight etc. alone.
+		if tax.account_head and "GST" in tax.account_head:
+			tax.included_in_print_rate = 1
+
+
 @frappe.whitelist()
 def set_user_and_customer_and_branch(user):
     settings = frappe.get_single("Calicut Textiles Settings")
