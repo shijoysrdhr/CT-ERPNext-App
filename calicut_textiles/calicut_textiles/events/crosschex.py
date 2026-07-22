@@ -253,16 +253,63 @@ def sync_checkins(from_date, to_date, delete_missing=True):
     return summary
 
 
+def _sync_and_notify(from_date, to_date, user):
+    """Background wrapper -- tells the user how it went, since a queued job
+    cannot return anything to the browser."""
+    try:
+        summary = sync_checkins(from_date, to_date)
+    except Exception:
+        frappe.log_error(title="CrossChex sync failed")
+        frappe.publish_realtime(
+            "msgprint",
+            {
+                "title": _("Check-in Sync Failed"),
+                "message": _("Could not sync {0} to {1}. Ask IT to check the error log.").format(
+                    from_date, to_date
+                ),
+                "indicator": "red",
+            },
+            user=user,
+        )
+        return
+
+    lines = [
+        _("{0} to {1}").format(summary["from_date"], summary["to_date"]),
+        _("{0} punches read from CrossChex").format(summary["fetched"]),
+        _("{0} new, {1} corrected, {2} unchanged, {3} removed").format(
+            summary["created"], summary["updated"], summary["unchanged"], summary["deleted"]
+        ),
+    ]
+    if summary["unmapped_worknos"]:
+        unmapped = ", ".join(
+            f"{no} ({name})" for no, name in sorted(summary["unmapped_worknos"].items())
+        )
+        lines.append(
+            _("Ignored, no employee has this Attendance Device ID: {0}").format(unmapped)
+        )
+
+    frappe.publish_realtime(
+        "msgprint",
+        {
+            "title": _("Check-in Sync Complete"),
+            "message": "<br>".join(lines),
+            "indicator": "green",
+        },
+        user=user,
+    )
+
+
 @frappe.whitelist()
 def enqueue_sync(from_date, to_date):
     """Queue a sync -- a month spans several pages at 15s apart, far too slow
     to run inside a web request."""
     frappe.enqueue(
-        sync_checkins,
+        _sync_and_notify,
         queue="long",
         timeout=3600,
         from_date=from_date,
         to_date=to_date,
+        user=frappe.session.user,
     )
     frappe.msgprint(
         _("Check-in sync queued for {0} to {1}. It runs in the background.").format(
