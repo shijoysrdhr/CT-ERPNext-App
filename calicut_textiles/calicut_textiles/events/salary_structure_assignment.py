@@ -1,5 +1,8 @@
 import frappe
 from frappe import _
+from frappe.utils import flt
+
+DEFAULT_PAYABLE_DAYS = 30
 
 
 def validate_encashment_amount(doc, method):
@@ -13,4 +16,8 @@ def validate_encashment_amount(doc, method):
     if is_part_time and not doc.get("custom_hourly_rate"):
         frappe.throw(_("Hourly Rate is required for part-time employees"))
 
-    doc.custom_leave_encashment_amount_per_day = (doc.base or 0) / 30
+    # The base covers `custom_payable_days` days -- 30 for a normal full month,
+    # fewer for staff paid for only part of it (an employee shared with another
+    # company). Everything per-day derives from this.
+    payable_days = flt(doc.get("custom_payable_days")) or DEFAULT_PAYABLE_DAYS
+    doc.custom_leave_encashment_amount_per_day = (doc.base or 0) / payable_days

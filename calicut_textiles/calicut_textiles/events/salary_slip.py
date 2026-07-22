@@ -2,6 +2,9 @@ import frappe
 from frappe.utils import flt, get_last_day, getdate
 
 
+DEFAULT_PAYABLE_DAYS = 30
+
+
 def get_base(employee, end_date):
     """Monthly gross from the employee's latest Salary Structure Assignment."""
     return flt(
@@ -12,6 +15,24 @@ def get_base(employee, end_date):
             order_by="from_date desc",
         )
     )
+
+
+def get_payable_days(employee, end_date=None):
+    """Days the monthly gross covers -- the divisor for per-day salary.
+
+    30 for everyone on a normal full month. Lower for staff paid for only part
+    of it, such as an employee shared with another company: SARATH is paid
+    9,000 by Calicut Textiles for 15 days, so a day of his costs 9,000/15.
+    """
+    days = frappe.db.get_value(
+        "Salary Structure Assignment",
+        {"employee": employee, "from_date": ["<=", end_date], "docstatus": 1}
+        if end_date
+        else {"employee": employee, "docstatus": 1},
+        "custom_payable_days",
+        order_by="from_date desc",
+    )
+    return flt(days) or DEFAULT_PAYABLE_DAYS
 
 
 def get_late_early_amount(employee, start_date, end_date):
@@ -37,7 +58,7 @@ def set_deducted_gross(doc):
     """Set the ESI/PF base fields that the salary structure formulas read.
 
     Mirrors the payroll workbook:
-        per day       = gross / 30
+        per day       = gross / payable days (30 unless the employee is shared)
         LOP           = unpaid absent days x per day
         ESI salary  T = gross - (LOP + late/early)
         PF salary     = T * 0.625 + (T * 0.625) * 0.40   ->  T * 0.875
@@ -51,7 +72,7 @@ def set_deducted_gross(doc):
     if not base:
         return False
 
-    per_day = base / 30.0
+    per_day = base / get_payable_days(doc.employee, doc.end_date)
     # absent_days is 0 until get_working_days_details() has run, so this is a
     # seed value on before_insert and the real figure on validate.
     unpaid_days = flt(doc.absent_days) + flt(doc.leave_without_pay)

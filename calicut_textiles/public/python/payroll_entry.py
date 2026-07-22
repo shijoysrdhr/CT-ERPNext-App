@@ -546,19 +546,20 @@ def get_hourly_rate(emp):
 
 
 def get_per_minute_salary(emp, start, end, shift_hours):
-    base = frappe.db.get_value(
+    base, payable_days = frappe.db.get_value(
         "Salary Structure Assignment",
         {"employee": emp, "docstatus": 1},
-        "base",
+        ["base", "custom_payable_days"],
         order_by="from_date desc"
-    )
+    ) or (None, None)
     if not base:
         return 0
 
-    # Per-day salary is always gross/30, independent of the calendar length of
-    # the month. Dividing by the real day count made OT and late/early ~3% light
-    # in 31-day months and ~7% heavy in February.
-    return base / (30 * shift_hours * 60)
+    # Per-day salary is gross / payable days, independent of the calendar length
+    # of the month. Dividing by the real day count made OT and late/early ~3%
+    # light in 31-day months and ~7% heavy in February. Payable days is 30 for
+    # everyone except staff paid for only part of the month (shared employees).
+    return base / ((flt(payable_days) or 30) * shift_hours * 60)
 
 # =====================================================
 # DOCUMENT CREATORS
