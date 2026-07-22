@@ -154,7 +154,8 @@ def load_employees(employees):
     data = frappe.get_all(
         "Employee",
         filters={"name": ["in", employees]},
-        fields=["name", "holiday_list", "default_shift","date_of_joining","employment_type"]
+        fields=["name", "holiday_list", "default_shift", "date_of_joining", "employment_type",
+                "custom_exempt_from_biometric_attendance"]
     )
     return {d.name: d for d in data}
 
@@ -229,6 +230,12 @@ def create_overtime(pe, employees, employee_map, checkin_map, holiday_map):
 
         emp_doc = employee_map.get(emp)
         if not emp_doc:
+            continue
+
+        # Exempt staff punch only on the odd day they happen to be in the office.
+        # Reading late/early or overtime out of that would penalise them for the
+        # very pattern that makes them exempt.
+        if emp_doc.get("custom_exempt_from_biometric_attendance"):
             continue
 
         shift_name = emp_doc.default_shift
@@ -428,10 +435,17 @@ def process_attendance(emp, start, end, employee_map, holiday_map, checkin_map):
         )
     }
 
-    # 4. True missing days
-    missing_days = sorted(
-        working_days - present_days - attendance_days
-    )
+    # 4. True missing days.
+    # Staff exempt from biometric attendance (the owner's driver, anyone without
+    # a device) are away from the office as a matter of course, so a day with no
+    # punch means nothing. They are Present unless somebody records otherwise:
+    # absence is entered by hand and left alone here.
+    if employee_map[emp].get("custom_exempt_from_biometric_attendance"):
+        missing_days = []
+    else:
+        missing_days = sorted(
+            working_days - present_days - attendance_days
+        )
 
     # 5. Leave limits
     max_leave = get_max_consecutive_leave(leave_type)
