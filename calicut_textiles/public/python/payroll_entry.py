@@ -180,8 +180,11 @@ def load_checkins(employees, start, end):
     rows = frappe.get_all(
         "Employee Checkin",
         filters={
+            # Frappe already stretches the end of a date range to 23:59:59, so
+            # `end + 1 day` pulled in the whole of the following day: June payroll
+            # was counting 1 July's punches as overtime and late/early.
             "employee": ["in", employees],
-            "time": ["between", [start, end + timedelta(days=1)]]
+            "time": ["between", [start, end]]
         },
         fields=["employee", "time", "custom_late_early","custom_late_coming_minutes","custom_early_going_minutes"],
         order_by="time asc"
@@ -249,8 +252,12 @@ def create_overtime(pe, employees, employee_map, checkin_map, holiday_map):
             if len(times) < 2:
                 continue
 
-            in_time = times[0]
-            out_time = times[-1]
+            # The biometric export the payroll workbook is built from records
+            # HH:MM only, while CrossChex returns seconds. Work to the minute so
+            # spans and late/early agree with the workbook instead of losing up
+            # to a minute a day to truncation.
+            in_time = times[0].replace(second=0, microsecond=0)
+            out_time = times[-1].replace(second=0, microsecond=0)
 
             # Part-timers have no shift to be late for -- every worked minute is
             # paid at their hourly rate, so the whole span is "overtime".
@@ -332,23 +339,7 @@ def clear_system_generated_attendance(emp, start, end):
     rows from the current check-in data. Only rows this code created
     (custom_is_system_generated) are touched -- anything entered by hand stays.
     """
-    for attendance in frappe.get_all(
-        "Attendance",
-        filters={
-            "employee": emp,
-            "attendance_date": ["between", [start, end]],
-            "custom_is_system_generated": 1,
-            "docstatus": ["<", 2],
-        },
-        pluck="name",
-    ):
-        doc = frappe.get_doc("Attendance", attendance)
-        doc.flags.ignore_permissions = True
-        if doc.docstatus == 1:
-            doc.cancel()
-        doc.delete(ignore_permissions=True)
-
-    for leave in frappe.get_all(
+    leaves = frappe.get_all(
         "Leave Application",
         filters={
             "employee": emp,
@@ -358,7 +349,41 @@ def clear_system_generated_attendance(emp, start, end):
             "docstatus": ["<", 2],
         },
         pluck="name",
-    ):
+    )
+
+    # Submitting a Leave Application makes ERPNext raise its own "On Leave"
+    # Attendance, which is not flagged system-generated but still links back to
+    # the leave -- so it has to go first or the leave cannot be removed.
+    attendance = frappe.get_all(
+        "Attendance",
+        filters={
+            "employee": emp,
+            "attendance_date": ["between", [start, end]],
+            "custom_is_system_generated": 1,
+            "docstatus": ["<", 2],
+        },
+        pluck="name",
+    )
+    if leaves:
+        attendance += frappe.get_all(
+            "Attendance",
+            filters={
+                "employee": emp,
+                "attendance_date": ["between", [start, end]],
+                "leave_application": ["in", leaves],
+                "docstatus": ["<", 2],
+            },
+            pluck="name",
+        )
+
+    for name in dict.fromkeys(attendance):
+        doc = frappe.get_doc("Attendance", name)
+        doc.flags.ignore_permissions = True
+        if doc.docstatus == 1:
+            doc.cancel()
+        doc.delete(ignore_permissions=True)
+
+    for leave in leaves:
         doc = frappe.get_doc("Leave Application", leave)
         doc.flags.ignore_permissions = True
         if doc.docstatus == 1:
