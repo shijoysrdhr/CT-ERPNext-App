@@ -259,14 +259,15 @@
     }
 
     // Resolve straight to the FINAL template the invoice should carry. Counter
-    // branches bill GST-inclusive, so ask for the '- Inc' twin by name instead of
+    // Only Counter RT bills GST-inclusive; ask for its '- Inc' twin by name. Counter CT
+    // bills EXCLUSIVE and must keep the plain template (do NOT append '- Inc'). Instead of
     // resolving the exclusive one and swapping afterwards. The old order set the
     // exclusive template first -- which dirties the form via set_value -- and only
     // then swapped to the inclusive twin, so every reopened Counter invoice came
     // up "Not Saved" even though its stored template was already correct.
-    const isCounter = !!COUNTER_CFG[frm.doc.custom_branch];
+    const isInclusiveCounter = frm.doc.custom_branch === 'Counter RT';
     const preferred = (inState ? PREFERRED_TEMPLATE_NAMES.IN_STATE : PREFERRED_TEMPLATE_NAMES.OUT_STATE)
-                      + (isCounter ? ' - Inc' : '');
+                      + (isInclusiveCounter ? ' - Inc' : '');
     let resolved = await find_template_via_search_link(frm.doc.company, preferred);
     if (!resolved) {
       resolved = await find_best_template_by_keywords(frm.doc.company, inState ? 'in' : 'out');
