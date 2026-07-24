@@ -258,7 +258,15 @@
       if (compName) inState = norm(compName) === norm(posName);
     }
 
-    const preferred = inState ? PREFERRED_TEMPLATE_NAMES.IN_STATE : PREFERRED_TEMPLATE_NAMES.OUT_STATE;
+    // Resolve straight to the FINAL template the invoice should carry. Counter
+    // branches bill GST-inclusive, so ask for the '- Inc' twin by name instead of
+    // resolving the exclusive one and swapping afterwards. The old order set the
+    // exclusive template first -- which dirties the form via set_value -- and only
+    // then swapped to the inclusive twin, so every reopened Counter invoice came
+    // up "Not Saved" even though its stored template was already correct.
+    const isCounter = !!COUNTER_CFG[frm.doc.custom_branch];
+    const preferred = (inState ? PREFERRED_TEMPLATE_NAMES.IN_STATE : PREFERRED_TEMPLATE_NAMES.OUT_STATE)
+                      + (isCounter ? ' - Inc' : '');
     let resolved = await find_template_via_search_link(frm.doc.company, preferred);
     if (!resolved) {
       resolved = await find_best_template_by_keywords(frm.doc.company, inState ? 'in' : 'out');
@@ -269,7 +277,8 @@
       await frm.trigger('taxes_and_charges');
     }
 
-    // Counter RT: swap the resolved exclusive template to its GST-inclusive twin.
+    // Safety net if the exclusive template still slipped through (e.g. keyword
+    // fallback): swap it to the GST-inclusive twin. A no-op once resolved is '- Inc'.
     await apply_counter_rt_inclusive(frm);
   }
 
@@ -352,7 +361,10 @@
         args: { doctype: 'Sales Taxes and Charges Template', txt, filters: { company, disabled: 0 }, page_length: 50 }
       });
       const rows = r?.message || [];
-      const exact = rows.find(x => x.value === txt);
+      // Match on label: x.value is the document NAME and always carries the
+      // ' - <company abbr>' suffix, so === against the bare title never matched
+      // and this silently fell through to rows[0] (the exclusive template).
+      const exact = rows.find(x => x.label === txt);
       return exact ? exact.value : (rows[0]?.value || null);
     } catch { return null; }
   }
