@@ -3,7 +3,7 @@
 
 """Actions for the "Batch Repack Worklist" report.
 
-Three complementary one-click actions, all back-dated to just before the sales
+Four complementary one-click actions, all back-dated to just before the sales
 invoice (ERPNext validates batch stock chronologically, so the entry must post
 before the invoice or submit still fails). Each consumes worklist rows tagged
 with the matching `action`:
@@ -12,6 +12,12 @@ with the matching `action`:
                                 another warehouse → Material Transfer it in.
   * create_repack             — action "Repack": move stock from a FIFO source
                                 batch into the over-drawn (short) batch, same wh.
+  * create_transfer_repack    — action "Transfer + Repack": source batch sits in a
+                                DIFFERENT warehouse → one Repack consumes it there
+                                and produces the short batch here. ERPNext allows
+                                a Repack's consumed and finished rows to name
+                                different warehouses, so this needs no separate
+                                Material Transfer (and no second back-dating).
   * create_material_receipt   — action "Material Receipt": item genuinely short →
                                 receive the missing qty into the short batch.
 
@@ -31,6 +37,7 @@ from frappe.utils import add_to_date, cint, flt, get_datetime, get_link_to_form,
 
 EPS = 0.0005
 LEAD_MINUTES = 1  # post the entry this many minutes before the sales invoice
+VALUE_TOL = 0.05  # rupees a Repack may drift on rounding before it is rejected
 
 
 # ---------------------------------------------------------------------------
@@ -45,6 +52,14 @@ def create_material_transfer(rows, submit=0):
 @frappe.whitelist()
 def create_repack(rows, submit=0):
 	return _run(rows, "Repack", ("short_batch", "source_batch"), _build_repack, submit)
+
+
+@frappe.whitelist()
+def create_transfer_repack(rows, submit=0):
+	return _run(
+		rows, "Transfer + Repack", ("short_batch", "source_batch", "source_warehouse"),
+		_build_repack, submit,
+	)
 
 
 @frappe.whitelist()
@@ -107,8 +122,11 @@ def _build_repack(si, rows, submit):
 	se.remarks = _("Auto batch-repack for shortfall on Sales Invoice {0}").format(si) if si else None
 	for r in rows:
 		qty = flt(r["qty"])
+		# Same-warehouse repack leaves source_warehouse == warehouse; a
+		# "Transfer + Repack" row consumes in another warehouse and produces here.
+		src_wh = r.get("source_warehouse") or r["warehouse"]
 		se.append("items", {
-			"item_code": r["item_code"], "qty": qty, "s_warehouse": r["warehouse"],
+			"item_code": r["item_code"], "qty": qty, "s_warehouse": src_wh,
 			"use_serial_batch_fields": 1, "batch_no": r["source_batch"],
 		})
 		se.append("items", {
@@ -120,9 +138,60 @@ def _build_repack(si, rows, submit):
 			# multiple finished goods (validate_repack_entry) unless each FG row sets
 			# its basic rate manually.
 			"is_finished_item": 1, "set_basic_rate_manually": 1,
-			"basic_rate": _receipt_rate(r["item_code"], r["warehouse"], r["source_batch"]),
+			# Seed only — the real rate is mirrored from the consumed row's actual
+			# valuation by _balance_repack_value() once ERPNext has costed it.
+			"basic_rate": _receipt_rate(r["item_code"], src_wh, r["source_batch"]),
 		})
-	return _save(se, submit)
+
+	se.insert()
+	_balance_repack_value(se)
+	if submit:
+		se.submit()
+	return se.name
+
+
+def _balance_repack_value(se):
+	"""Make a Repack conserve stock value.
+
+	ERPNext's `set_basic_rate` short-circuits on `set_basic_rate_manually`
+	(`if d.s_warehouse or d.set_basic_rate_manually: continue`) *before* the line
+	that computes `basic_amount`. So a manually-rated finished row is inserted with
+	`basic_amount = 0`, and `update_valuation_rate` then derives
+	`valuation_rate = basic_amount / transfer_qty = 0` — the incoming batch is
+	booked at ZERO and everything consumed is written off. That is what destroyed
+	₹2,682 on SE263252.
+
+	After insert the consumed rows carry their real valuation, so mirror each
+	consumed row's value onto the finished row it feeds (items are appended
+	strictly out, in, out, in …). Qty in == qty out, so value in == value out.
+	"""
+	pairs = list(zip(se.items[0::2], se.items[1::2]))
+	if len(se.items) % 2 or not all(
+		(not out.is_finished_item) and fg.is_finished_item for out, fg in pairs
+	):
+		frappe.throw(_("Repack rows are not in consumed/produced pairs — refusing to value {0}.").format(se.name))
+
+	changed = False
+	for out, fg in pairs:
+		amount = flt(out.basic_amount)
+		qty = flt(fg.transfer_qty) or flt(fg.qty)
+		rate = flt(amount / qty, fg.precision("basic_rate")) if qty else 0.0
+		if abs(flt(fg.basic_amount) - amount) > EPS or abs(flt(fg.basic_rate) - rate) > EPS:
+			fg.basic_rate = rate
+			fg.basic_amount = amount
+			changed = True
+	if changed:
+		se.save()
+
+	# Never hand back a draft that leaks value — the savepoint in _run turns this
+	# into a reported "skipped" invoice instead of a silent write-off.
+	leak = flt(se.total_incoming_value) - flt(se.total_outgoing_value)
+	if abs(leak) > VALUE_TOL:
+		frappe.throw(
+			_("Repack for {0} would change stock value by {1} (in {2} vs out {3}).").format(
+				se.name, flt(leak, 2), flt(se.total_incoming_value, 2), flt(se.total_outgoing_value, 2)
+			)
+		)
 
 
 def _build_material_receipt(si, rows, submit):
@@ -151,7 +220,12 @@ def _group_by_si(rows):
 def _new_entry(purpose, si, rows):
 	"""New Stock Entry of the given purpose, company from the rows' (target)
 	warehouse, back-dated to just before the sales invoice, flagged system-generated."""
-	companies = {frappe.db.get_value("Warehouse", r["warehouse"], "company") for r in rows}
+	companies = {
+		frappe.db.get_value("Warehouse", wh, "company")
+		for r in rows
+		for wh in (r.get("warehouse"), r.get("source_warehouse"))
+		if wh
+	}
 	if len(companies) > 1:
 		frappe.throw(_("Rows for invoice {0} span multiple companies.").format(si or "?"))
 

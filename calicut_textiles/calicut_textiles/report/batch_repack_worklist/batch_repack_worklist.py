@@ -10,13 +10,16 @@ adding a second batch row). This report does that hunt *before* submitting:
   * scans every DRAFT Sales Invoice line that carries a batch_no,
   * projects each (batch, warehouse) balance after the draft demand,
   * lists every batch that will go negative (the shortfall), and
-  * proposes how to fix each, in a 3-tier cascade (most-truthful first):
+  * proposes how to fix each, in a 4-tier cascade (most-truthful first):
 
       1. TRANSFER          - the exact short batch has stock in ANOTHER
                              warehouse (same company) -> Material Transfer it in.
       2. REPACK            - other batches of the same item are in the SAME
                              warehouse -> move stock between batches.
-      3. MATERIAL RECEIPT  - none anywhere -> receive the missing qty.
+      3. TRANSFER + REPACK - a DIFFERENT batch of the item sits in a DIFFERENT
+                             warehouse -> one cross-warehouse Repack consumes it
+                             there and produces the short batch here.
+      4. MATERIAL RECEIPT  - none anywhere -> receive the missing qty.
 
 A single shortfall may split across tiers (e.g. transfer 5 + repack 11). The
 report emits one row per allocation with an `action` so the matching button on
@@ -87,12 +90,20 @@ def get_data(filters):
 
 	# Repack index: same-warehouse other batches of an item, oldest first.
 	repack_index = {}
+	# Cross index: every (batch, warehouse) holding an item, oldest batch first —
+	# the pool tier 3 draws from once same-warehouse stock is exhausted.
+	cross_index = {}
 	for (batch, wh) in avail:
 		it = batch_item.get(batch)
 		if it:
 			repack_index.setdefault((it, wh), []).append(batch)
+			cross_index.setdefault(it, []).append((batch, wh))
 	for key in repack_index:
 		repack_index[key].sort(key=lambda b: (batch_age.get(b) is None, batch_age.get(b) or FAR, b))
+	for key in cross_index:
+		cross_index[key].sort(
+			key=lambda bw: (batch_age.get(bw[0]) is None, batch_age.get(bw[0]) or FAR, bw[0])
+		)
 
 	rows = []
 	for d in demand:
@@ -148,7 +159,31 @@ def get_data(filters):
 			avail[(b, sw)] = flt(cur - take, PREC)
 			remaining = flt(remaining - take, PREC)
 
-		# Tier 3 — MATERIAL RECEIPT for the true remainder (no stock anywhere).
+		# Tier 3 — TRANSFER + REPACK: a different batch of the item in a different
+		# warehouse (FIFO). Tier 1 only moves the identical batch and tier 2 only
+		# swaps batches in place, so without this the commonest real case —
+		# "the goods are in Stores, just under another batch" — fell through to a
+		# Material Receipt and invented stock that already existed.
+		for b, wh in cross_index.get(item, []):
+			if remaining <= EPS:
+				break
+			if wh == sw or b == sb:          # covered by tier 2 / tier 1 respectively
+				continue
+			if wh_company.get(wh) != comp:
+				continue
+			cur = avail.get((b, wh), 0)
+			if cur <= EPS:
+				continue
+			take = flt(min(cur, remaining), PREC)
+			if take <= EPS:
+				continue
+			rows.append({**base, "action": "Transfer + Repack", "source_warehouse": wh, "source_batch": b,
+				"source_avail": flt(cur, PREC), "qty": take,
+				"status": _("Repack from {0} into {1}").format(wh, sw)})
+			avail[(b, wh)] = flt(cur - take, PREC)
+			remaining = flt(remaining - take, PREC)
+
+		# Tier 4 — MATERIAL RECEIPT for the true remainder (no stock anywhere).
 		if remaining > EPS:
 			rows.append({**base, "action": "Material Receipt", "source_warehouse": None, "source_batch": None,
 				"source_avail": 0, "qty": flt(remaining, PREC),

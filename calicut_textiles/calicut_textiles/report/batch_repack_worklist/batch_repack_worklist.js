@@ -34,6 +34,8 @@ frappe.query_reports["Batch Repack Worklist"] = {
 			value = `<span style="color:var(--red-600)">${value}</span>`;
 		} else if (data && data.action === "Transfer") {
 			value = `<span style="color:var(--blue-600)">${value}</span>`;
+		} else if (data && data.action === "Transfer + Repack") {
+			value = `<span style="color:var(--orange-600)">${value}</span>`;
 		}
 		return value;
 	},
@@ -89,6 +91,15 @@ frappe.query_reports["Batch Repack Worklist"] = {
 		);
 		report.page.add_inner_button(__("Create Repack"), () =>
 			run("Repack", "calicut_textiles.api.batch_repack.create_repack", __("Repack Stock Entry"), "green")
+		);
+		report.page.add_inner_button(__("Create Transfer + Repack"), () =>
+			run(
+				"Transfer + Repack",
+				"calicut_textiles.api.batch_repack.create_transfer_repack",
+				__("Cross-Warehouse Repack"),
+				"orange",
+				__("The stock exists, but as a <b>different batch in a different warehouse</b>. One Repack consumes it there and produces the short batch here — no new stock is created. <b>Check the valuation rate on the draft before submitting.</b>")
+			)
 		);
 		report.page.add_inner_button(__("Create Material Receipt"), () =>
 			run(
