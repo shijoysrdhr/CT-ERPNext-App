@@ -127,16 +127,26 @@ def get_data(filters):
 			key=lambda bw: (batch_age.get(bw[0]) is None, batch_age.get(bw[0]) or FAR, bw[0])
 		)
 
+	# The invoice draws at its own posting time; the fix is posted LEAD_MINUTES
+	# before that. Both are judged as of then, not as of now.
+	for d in demand:
+		d.posted_at = get_datetime(f"{d.posting_date} {d.posting_time}")
+	# Two drafts on one short batch are rivals for the same units, so serve them
+	# oldest first out of a shared pool. Sized independently, each would count the
+	# whole balance as its own and neither would look short — then the first to
+	# submit takes it and the second fails.
+	demand.sort(key=lambda d: (d.posted_at, d.si))
+	claimed = {}                                    # {(short batch, wh): units spoken for}
+
 	rows = []
 	for d in demand:
 		sw, item, sb = d.warehouse, d.item_code, d.batch_no
-		# The invoice draws at its own posting time; the fix is posted LEAD_MINUTES
-		# before that. Both are judged as of then, not as of now.
-		t_si = get_datetime(f"{d.posting_date} {d.posting_time}")
-		t_fix = add_to_date(t_si, minutes=-LEAD_MINUTES)
+		t_fix = add_to_date(d.posted_at, minutes=-LEAD_MINUTES)
 
-		bal = flt(lendable(ledger, (sb, sw), t_si), PREC)
-		shortfall = flt(d.demand - bal, PREC)
+		bal = flt(max(0.0, lendable(ledger, (sb, sw), d.posted_at) - claimed.get((sb, sw), 0)), PREC)
+		covered = flt(min(d.demand, bal), PREC)
+		claimed[(sb, sw)] = flt(claimed.get((sb, sw), 0) + covered, PREC)
+		shortfall = flt(d.demand - covered, PREC)
 		if shortfall <= EPS:
 			continue
 
