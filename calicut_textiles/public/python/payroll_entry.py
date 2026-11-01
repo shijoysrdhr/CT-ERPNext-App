@@ -3,6 +3,9 @@ from frappe.utils import getdate, add_days, get_time, flt
 from datetime import datetime, timedelta, time
 from collections import defaultdict
 
+# Staff on this shift finish when the last of them punches out, not at a fixed time.
+CLOSE_WITH_GROUP_SHIFT = "RT 9 to 9"
+
 # =====================================================
 # VALIDATIONS
 # =====================================================
@@ -213,6 +216,8 @@ def create_overtime(pe, employees, employee_map, checkin_map, holiday_map):
     grace = settings.threshold_early_minutes or 0
     early_component = settings.early_component
 
+    group_close = get_group_close_times(employees, employee_map, checkin_map)
+
     for emp in employees:
 
         # Skip if OT already created
@@ -284,6 +289,12 @@ def create_overtime(pe, employees, employee_map, checkin_map, holiday_map):
 
             shift_start, shift_end = shift_bounds(shift, date)
 
+            # The closing-time group finishes when its last member punches out, so
+            # that replaces the fixed shift end, and no late-evening waiver applies.
+            closes_with_group = shift_name == CLOSE_WITH_GROUP_SHIFT
+            if closes_with_group:
+                shift_end = group_close.get(date, shift_end)
+
             normal_start = shift_start - timedelta(minutes=threshold)
             normal_end = shift_end + timedelta(minutes=threshold)
 
@@ -291,10 +302,11 @@ def create_overtime(pe, employees, employee_map, checkin_map, holiday_map):
             normal_lateearly_end = shift_end - timedelta(minutes=grace)
 
             # ---------------- OVERTIME ----------------
-            if in_time < normal_start:
+            # Morning and evening each count once they reach the threshold, in full.
+            if in_time <= normal_start:
                 total_ot_minutes += threshold + minutes(normal_start - in_time)
 
-            if out_time > normal_end:
+            if out_time >= normal_end:
                 total_ot_minutes += threshold + minutes(out_time - normal_end)
             # --------------------------------------------
 
@@ -304,7 +316,7 @@ def create_overtime(pe, employees, employee_map, checkin_map, holiday_map):
 
             # Staying until the late-evening cutoff waives early-going for the
             # day, however the shift is defined.
-            waiver = late_exit_waiver_time(date)
+            waiver = None if closes_with_group else late_exit_waiver_time(date)
             if out_time < normal_lateearly_end and not (waiver and out_time >= waiver):
                 total_early_late_minutes += grace + minutes(normal_lateearly_end - out_time)
             # ------------------------------------------------------
@@ -502,6 +514,25 @@ def has_attendance_marked(emp, date):
             "status": ["in", ["Absent", "On Leave"]]
         }
     )
+
+def get_group_close_times(employees, employee_map, checkin_map):
+    """Date -> last punch-out of the closing-time group that day."""
+    close = {}
+    for emp in employees:
+        emp_doc = employee_map.get(emp)
+        if not emp_doc or emp_doc.default_shift != CLOSE_WITH_GROUP_SHIFT:
+            continue
+        if emp_doc.get("custom_exempt_from_biometric_attendance"):
+            continue
+        for date, rows in checkin_map.get(emp, {}).items():
+            times = filter_noise([r.time for r in rows])
+            if len(times) < 2:
+                continue
+            out_time = times[-1].replace(second=0, microsecond=0)
+            if date not in close or out_time > close[date]:
+                close[date] = out_time
+    return close
+
 
 def filter_noise(times):
     clean, last = [], None
