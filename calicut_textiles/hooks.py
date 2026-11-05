@@ -37,7 +37,8 @@ doctype_js = {"Purchase Receipt" : "public/purchase_recipt.js",
               "Item" : "public/item.js",
               "Purchase Order" : "public/purchase_order.js",
               "Salary Slip" : "public/salary_slip.js",
-              "Sales Invoice" : ["public/sales_invoice.js", "public/sales_invoice_counter.js"],
+              "Sales Invoice" : ["public/sales_invoice.js", "public/sales_invoice_counter.js", "public/js/india_post.js"],
+              "Delivery Note" : "public/js/india_post.js",
               "Sales Order" : "public/sales_order.js",
               "Employee Checkin" : "public/employee_checkin.js",
               }
@@ -86,6 +87,9 @@ doctype_list_js = {"Item" : "public/item_list.js",
 
 # before_install = "calicut_textiles.install.before_install"
 # after_install moved to the goshop app (storefront category seed)
+
+# India Post shipping fields on Sales Invoice / Delivery Note (idempotent).
+after_migrate = ["calicut_textiles.calicut_textiles.india_post.setup_custom_fields"]
 
 # Uninstallation
 # ------------
@@ -214,6 +218,10 @@ scheduler_events = {
 	# "all": [
 	# 	"calicut_textiles.tasks.all"
 	# ],
+	"cron": {
+		# Pull India Post tracking status for parcels still on their way.
+		"*/30 * * * *": ["calicut_textiles.calicut_textiles.india_post.sync_open_shipments"],
+	},
 	"daily": [
 		"calicut_textiles.calicut_textiles.events.encashment.process_monthly_leave_encashment",
         # Re-reads a trailing window from CrossChex rather than only new
