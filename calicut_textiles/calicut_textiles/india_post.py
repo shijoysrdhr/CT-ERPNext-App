@@ -9,6 +9,8 @@ schedule.
 site_config.json:
     "india_post_bridge_url":   "https://ship.calicuttextiles.com"
     "india_post_bridge_token": "<same value as ERP_BRIDGE_TOKEN on the bridge>"
+    "india_post_users":        ["a@x.com", ...]   # optional: only these users see it
+                                                  # (pilot); omit to show everyone
 """
 
 import json
@@ -247,6 +249,8 @@ def get_rates(doctype, name, receiver, parcel):
 
 @frappe.whitelist()
 def book(doctype, name, receiver, parcel):
+	if not _enabled_for():
+		frappe.throw(_("India Post booking is not enabled for you yet."))
 	doc = _load(doctype, name, "write")
 	if doc.docstatus != 1:
 		frappe.throw(_("Submit the document before booking India Post."))
@@ -313,6 +317,19 @@ def refresh_status(doctype, name):
 	if rows and rows[0].get("status"):
 		_apply(doctype, name, rows[0])
 	return rows[0] if rows else None
+
+
+def _enabled_for(user=None):
+	"""Configured, and (during a pilot) the user is on india_post_users."""
+	if not (frappe.conf.get("india_post_bridge_url") and frappe.conf.get("india_post_bridge_token")):
+		return False
+	allowed = frappe.conf.get("india_post_users")
+	return not allowed or (user or frappe.session.user) in allowed
+
+
+def boot_session(bootinfo):
+	"""Tells the form script whether to show the India Post buttons."""
+	bootinfo.india_post_enabled = _enabled_for()
 
 
 # ---------------------------------------------------------------------------

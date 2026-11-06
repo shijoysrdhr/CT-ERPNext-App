@@ -91,6 +91,9 @@ doctype_list_js = {"Item" : "public/item_list.js",
 # India Post shipping fields on Sales Invoice / Delivery Note (idempotent).
 after_migrate = ["calicut_textiles.calicut_textiles.india_post.setup_custom_fields"]
 
+# Shows the India Post buttons only when configured (and, in a pilot, to listed users).
+boot_session = "calicut_textiles.calicut_textiles.india_post.boot_session"
+
 # Uninstallation
 # ------------
 

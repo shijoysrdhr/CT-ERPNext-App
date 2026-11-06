@@ -23,6 +23,7 @@
 	}
 
 	function refresh(frm) {
+		if (!frappe.boot.india_post_enabled) return; // not configured, or not in the pilot list
 		if (frm.doc.docstatus !== 1 || frm.doc.is_return) return;
 		const status = frm.doc.custom_ip_status;
 		const awb = frm.doc.custom_ip_awb;
