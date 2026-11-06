@@ -1,0 +1,296 @@
+{
+ "actions": [],
+ "creation": "2026-11-06 12:00:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "enabled",
+  "pilot_users",
+  "account_section",
+  "base_url",
+  "customer_id",
+  "account_cb",
+  "username",
+  "password",
+  "contracts_section",
+  "contract_sp_doc",
+  "contract_sp_parcel",
+  "contracts_cb",
+  "contract_business_parcel",
+  "sender_section",
+  "sender_name",
+  "sender_company",
+  "sender_address_line1",
+  "sender_address_line2",
+  "sender_address_line3",
+  "sender_cb",
+  "sender_city",
+  "sender_state",
+  "sender_pincode",
+  "sender_mobile",
+  "sender_email",
+  "sender_alt_contact",
+  "sender_gstin",
+  "office_section",
+  "booking_office_name",
+  "booking_office_pincode",
+  "office_cb",
+  "booking_office_id",
+  "stock_section",
+  "label_size",
+  "low_stock_alert",
+  "stock_cb",
+  "awb_stock",
+  "webhook_section",
+  "webhook_secret"
+ ],
+ "fields": [
+  {
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "label": "Enabled",
+   "default": "0",
+   "description": "Shows the India Post buttons on submitted Sales Invoices and Delivery Notes."
+  },
+  {
+   "fieldname": "pilot_users",
+   "fieldtype": "Small Text",
+   "label": "Only these users (pilot)",
+   "description": "One login email per line. Leave blank to allow everyone who can edit the invoice."
+  },
+  {
+   "fieldname": "account_section",
+   "fieldtype": "Section Break",
+   "label": "India Post account"
+  },
+  {
+   "fieldname": "base_url",
+   "fieldtype": "Data",
+   "label": "API host",
+   "default": "https://test.cept.gov.in",
+   "reqd": 1,
+   "description": "UAT: https://test.cept.gov.in — change to the production host at go-live."
+  },
+  {
+   "fieldname": "customer_id",
+   "fieldtype": "Data",
+   "label": "Customer ID",
+   "reqd": 1,
+   "description": "10-digit bulk customer id."
+  },
+  {
+   "fieldname": "account_cb",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "username",
+   "fieldtype": "Data",
+   "label": "API username"
+  },
+  {
+   "fieldname": "password",
+   "fieldtype": "Password",
+   "label": "API password"
+  },
+  {
+   "fieldname": "contracts_section",
+   "fieldtype": "Section Break",
+   "label": "Contracts"
+  },
+  {
+   "fieldname": "contract_sp_doc",
+   "fieldtype": "Data",
+   "label": "Speed Post — Document",
+   "default": "41585456"
+  },
+  {
+   "fieldname": "contract_sp_parcel",
+   "fieldtype": "Data",
+   "label": "Speed Post — Parcel",
+   "default": "41585456"
+  },
+  {
+   "fieldname": "contracts_cb",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "contract_business_parcel",
+   "fieldtype": "Data",
+   "label": "Business Parcel",
+   "default": "41585456"
+  },
+  {
+   "fieldname": "sender_section",
+   "fieldtype": "Section Break",
+   "label": "Sender (printed on every label)"
+  },
+  {
+   "fieldname": "sender_name",
+   "fieldtype": "Data",
+   "label": "Name",
+   "reqd": 1,
+   "default": "Calicut Textiles"
+  },
+  {
+   "fieldname": "sender_company",
+   "fieldtype": "Data",
+   "label": "Company",
+   "default": "Calicut Textiles"
+  },
+  {
+   "fieldname": "sender_address_line1",
+   "fieldtype": "Data",
+   "label": "Address line 1",
+   "reqd": 1,
+   "length": 80
+  },
+  {
+   "fieldname": "sender_address_line2",
+   "fieldtype": "Data",
+   "label": "Address line 2",
+   "length": 80
+  },
+  {
+   "fieldname": "sender_address_line3",
+   "fieldtype": "Data",
+   "label": "Address line 3",
+   "length": 80
+  },
+  {
+   "fieldname": "sender_cb",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "sender_city",
+   "fieldtype": "Data",
+   "label": "City",
+   "reqd": 1
+  },
+  {
+   "fieldname": "sender_state",
+   "fieldtype": "Data",
+   "label": "State"
+  },
+  {
+   "fieldname": "sender_pincode",
+   "fieldtype": "Data",
+   "label": "PIN code",
+   "reqd": 1
+  },
+  {
+   "fieldname": "sender_mobile",
+   "fieldtype": "Data",
+   "label": "Mobile",
+   "reqd": 1,
+   "description": "10 digits, starting 6–9."
+  },
+  {
+   "fieldname": "sender_email",
+   "fieldtype": "Data",
+   "label": "Email",
+   "options": "Email"
+  },
+  {
+   "fieldname": "sender_alt_contact",
+   "fieldtype": "Data",
+   "label": "Other phone"
+  },
+  {
+   "fieldname": "sender_gstin",
+   "fieldtype": "Data",
+   "label": "GSTIN"
+  },
+  {
+   "fieldname": "office_section",
+   "fieldtype": "Section Break",
+   "label": "Booking office (where parcels are handed over)"
+  },
+  {
+   "fieldname": "booking_office_name",
+   "fieldtype": "Data",
+   "label": "Office name",
+   "reqd": 1
+  },
+  {
+   "fieldname": "booking_office_pincode",
+   "fieldtype": "Data",
+   "label": "Office PIN code",
+   "reqd": 1
+  },
+  {
+   "fieldname": "office_cb",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "booking_office_id",
+   "fieldtype": "Data",
+   "label": "Office ID",
+   "reqd": 1,
+   "description": "8-digit India Post office id."
+  },
+  {
+   "fieldname": "stock_section",
+   "fieldtype": "Section Break",
+   "label": "Labels and AWB numbers"
+  },
+  {
+   "fieldname": "label_size",
+   "fieldtype": "Select",
+   "label": "Label size",
+   "options": "A6\nA4",
+   "default": "A6"
+  },
+  {
+   "fieldname": "low_stock_alert",
+   "fieldtype": "Int",
+   "label": "Warn when AWB numbers left fall below",
+   "default": "100"
+  },
+  {
+   "fieldname": "stock_cb",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "awb_stock",
+   "fieldtype": "HTML",
+   "label": "AWB stock"
+  },
+  {
+   "fieldname": "webhook_section",
+   "fieldtype": "Section Break",
+   "label": "Webhook",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "webhook_secret",
+   "fieldtype": "Password",
+   "label": "Webhook secret (optional)",
+   "description": "If India Post signs webhook calls, the shared secret. Leave blank otherwise."
+  }
+ ],
+ "links": [],
+ "modified": "2026-11-06 12:00:00",
+ "modified_by": "Administrator",
+ "module": "Calicut Textiles",
+ "name": "India Post Settings",
+ "owner": "Administrator",
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "issingle": 1,
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1,
+   "report": 1,
+   "export": 1,
+   "print": 1,
+   "email": 0,
+   "share": 1
+  }
+ ]
+}

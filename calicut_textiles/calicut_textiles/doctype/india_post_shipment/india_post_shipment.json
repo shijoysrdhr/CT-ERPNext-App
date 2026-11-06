@@ -1,0 +1,425 @@
+{
+ "actions": [],
+ "creation": "2026-11-06 12:00:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "reference_doctype",
+  "reference_name",
+  "customer",
+  "customer_name",
+  "cb1",
+  "status",
+  "awb",
+  "article_type",
+  "charge",
+  "cb2",
+  "booked_on",
+  "booked_by",
+  "contract_id",
+  "label",
+  "parcel_section",
+  "physical_weight",
+  "cod_value",
+  "insurance_value",
+  "order_amount",
+  "cb3",
+  "length",
+  "breadth",
+  "height",
+  "receiver_section",
+  "receiver_name",
+  "receiver_mobile",
+  "receiver_email",
+  "receiver_address_line1",
+  "receiver_address_line2",
+  "receiver_address_line3",
+  "cb4",
+  "receiver_city",
+  "receiver_state",
+  "receiver_pincode",
+  "tracking_section",
+  "last_event",
+  "cb5",
+  "last_event_at",
+  "delivered_on",
+  "events_section",
+  "events",
+  "details_section",
+  "errors",
+  "cancelled_awbs",
+  "batch_id",
+  "correlation_id",
+  "booking_request",
+  "booking_response"
+ ],
+ "fields": [
+  {
+   "fieldname": "reference_doctype",
+   "fieldtype": "Link",
+   "label": "Document type",
+   "options": "DocType",
+   "reqd": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "reference_name",
+   "fieldtype": "Dynamic Link",
+   "label": "Document",
+   "options": "reference_doctype",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "search_index": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "customer",
+   "fieldtype": "Link",
+   "label": "Customer",
+   "options": "Customer",
+   "in_standard_filter": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "customer_name",
+   "fieldtype": "Data",
+   "label": "Customer name",
+   "in_list_view": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Draft\nFailed\nBooked\nIn Transit\nDelivered\nReturned\nCancelled",
+   "default": "Draft",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "awb",
+   "fieldtype": "Data",
+   "label": "AWB",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "search_index": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "article_type",
+   "fieldtype": "Select",
+   "label": "Product",
+   "options": "SP_INLAND_DOC\nSP_INLAND_PARCEL\nBUSINESS_PARCEL\n24_SPEEDPOST_DOC\n48_SPEEDPOST_DOC\n24_SPP_PARSPL",
+   "in_list_view": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "charge",
+   "fieldtype": "Currency",
+   "label": "India Post charge",
+   "options": "INR",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "booked_on",
+   "fieldtype": "Datetime",
+   "label": "Booked on",
+   "read_only": 1
+  },
+  {
+   "fieldname": "booked_by",
+   "fieldtype": "Link",
+   "label": "Booked by",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "contract_id",
+   "fieldtype": "Data",
+   "label": "Contract",
+   "read_only": 1
+  },
+  {
+   "fieldname": "label",
+   "fieldtype": "Attach",
+   "label": "Label",
+   "read_only": 1
+  },
+  {
+   "fieldname": "parcel_section",
+   "fieldtype": "Section Break",
+   "label": "Parcel"
+  },
+  {
+   "fieldname": "physical_weight",
+   "fieldtype": "Int",
+   "label": "Weight (g)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cod_value",
+   "fieldtype": "Currency",
+   "label": "COD amount",
+   "options": "INR",
+   "read_only": 1
+  },
+  {
+   "fieldname": "insurance_value",
+   "fieldtype": "Currency",
+   "label": "Insured for",
+   "options": "INR",
+   "read_only": 1
+  },
+  {
+   "fieldname": "order_amount",
+   "fieldtype": "Currency",
+   "label": "Invoice value",
+   "options": "INR",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb3",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "length",
+   "fieldtype": "Float",
+   "label": "Length (cm)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "breadth",
+   "fieldtype": "Float",
+   "label": "Breadth (cm)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "height",
+   "fieldtype": "Float",
+   "label": "Height (cm)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "receiver_section",
+   "fieldtype": "Section Break",
+   "label": "Deliver to"
+  },
+  {
+   "fieldname": "receiver_name",
+   "fieldtype": "Data",
+   "label": "Name",
+   "read_only": 1
+  },
+  {
+   "fieldname": "receiver_mobile",
+   "fieldtype": "Data",
+   "label": "Mobile",
+   "read_only": 1
+  },
+  {
+   "fieldname": "receiver_email",
+   "fieldtype": "Data",
+   "label": "Email",
+   "read_only": 1
+  },
+  {
+   "fieldname": "receiver_address_line1",
+   "fieldtype": "Data",
+   "label": "Address line 1",
+   "read_only": 1
+  },
+  {
+   "fieldname": "receiver_address_line2",
+   "fieldtype": "Data",
+   "label": "Address line 2",
+   "read_only": 1
+  },
+  {
+   "fieldname": "receiver_address_line3",
+   "fieldtype": "Data",
+   "label": "Address line 3",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb4",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "receiver_city",
+   "fieldtype": "Data",
+   "label": "City",
+   "read_only": 1
+  },
+  {
+   "fieldname": "receiver_state",
+   "fieldtype": "Data",
+   "label": "State",
+   "read_only": 1
+  },
+  {
+   "fieldname": "receiver_pincode",
+   "fieldtype": "Data",
+   "label": "PIN code",
+   "in_standard_filter": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "tracking_section",
+   "fieldtype": "Section Break",
+   "label": "Tracking"
+  },
+  {
+   "fieldname": "last_event",
+   "fieldtype": "Data",
+   "label": "Last event",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb5",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "last_event_at",
+   "fieldtype": "Datetime",
+   "label": "Last event at",
+   "read_only": 1
+  },
+  {
+   "fieldname": "delivered_on",
+   "fieldtype": "Datetime",
+   "label": "Delivered on",
+   "read_only": 1
+  },
+  {
+   "fieldname": "events_section",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "events",
+   "fieldtype": "Table",
+   "label": "Events",
+   "options": "India Post Tracking Event",
+   "read_only": 1
+  },
+  {
+   "fieldname": "details_section",
+   "fieldtype": "Section Break",
+   "label": "Booking details",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "errors",
+   "fieldtype": "Small Text",
+   "label": "Problems",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cancelled_awbs",
+   "fieldtype": "Small Text",
+   "label": "Cancelled AWBs (never reuse)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "batch_id",
+   "fieldtype": "Data",
+   "label": "Batch id",
+   "read_only": 1
+  },
+  {
+   "fieldname": "correlation_id",
+   "fieldtype": "Data",
+   "label": "Correlation id",
+   "read_only": 1
+  },
+  {
+   "fieldname": "booking_request",
+   "fieldtype": "Code",
+   "label": "Booking request",
+   "options": "JSON",
+   "read_only": 1
+  },
+  {
+   "fieldname": "booking_response",
+   "fieldtype": "Code",
+   "label": "Booking response",
+   "options": "JSON",
+   "read_only": 1
+  }
+ ],
+ "links": [],
+ "modified": "2026-11-06 12:00:00",
+ "modified_by": "Administrator",
+ "module": "Calicut Textiles",
+ "name": "India Post Shipment",
+ "owner": "Administrator",
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "autoname": "IPS-.#####",
+ "naming_rule": "Expression (old style)",
+ "title_field": "reference_name",
+ "show_title_field_in_link": 0,
+ "search_fields": "awb,customer_name",
+ "track_changes": 1,
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "create": 0,
+   "delete": 1,
+   "report": 1,
+   "export": 1,
+   "print": 1,
+   "email": 0,
+   "share": 1
+  },
+  {
+   "role": "Accounts User",
+   "read": 1,
+   "write": 0,
+   "create": 0,
+   "delete": 0,
+   "report": 1,
+   "export": 1,
+   "print": 1,
+   "email": 0,
+   "share": 0
+  },
+  {
+   "role": "Sales User",
+   "read": 1,
+   "write": 0,
+   "create": 0,
+   "delete": 0,
+   "report": 1,
+   "export": 1,
+   "print": 1,
+   "email": 0,
+   "share": 0
+  },
+  {
+   "role": "Stock User",
+   "read": 1,
+   "write": 0,
+   "create": 0,
+   "delete": 0,
+   "report": 1,
+   "export": 1,
+   "print": 1,
+   "email": 0,
+   "share": 0
+  }
+ ]
+}

@@ -1,0 +1,146 @@
+{
+ "actions": [],
+ "creation": "2026-11-06 12:00:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "awb",
+  "status",
+  "prefix",
+  "serial",
+  "cb1",
+  "shipment",
+  "reference_name",
+  "used_on",
+  "note"
+ ],
+ "fields": [
+  {
+   "fieldname": "awb",
+   "fieldtype": "Data",
+   "label": "AWB",
+   "reqd": 1,
+   "unique": 1,
+   "in_list_view": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Available\nAllocated\nUsed\nVoid",
+   "default": "Available",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "search_index": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "prefix",
+   "fieldtype": "Data",
+   "label": "Prefix",
+   "in_standard_filter": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "serial",
+   "fieldtype": "Int",
+   "label": "Serial",
+   "search_index": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "shipment",
+   "fieldtype": "Link",
+   "label": "Shipment",
+   "options": "India Post Shipment",
+   "in_list_view": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "reference_name",
+   "fieldtype": "Data",
+   "label": "Document",
+   "in_list_view": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "used_on",
+   "fieldtype": "Datetime",
+   "label": "Used on",
+   "read_only": 1
+  },
+  {
+   "fieldname": "note",
+   "fieldtype": "Small Text",
+   "label": "Note",
+   "read_only": 1
+  }
+ ],
+ "links": [],
+ "modified": "2026-11-06 12:00:00",
+ "modified_by": "Administrator",
+ "module": "Calicut Textiles",
+ "name": "India Post AWB",
+ "owner": "Administrator",
+ "row_format": "Dynamic",
+ "sort_field": "serial",
+ "sort_order": "ASC",
+ "states": [],
+ "autoname": "field:awb",
+ "naming_rule": "By fieldname",
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "create": 0,
+   "delete": 1,
+   "report": 1,
+   "export": 1,
+   "print": 1,
+   "email": 0,
+   "share": 1
+  },
+  {
+   "role": "Accounts User",
+   "read": 1,
+   "write": 0,
+   "create": 0,
+   "delete": 0,
+   "report": 1,
+   "export": 1,
+   "print": 1,
+   "email": 0,
+   "share": 0
+  },
+  {
+   "role": "Sales User",
+   "read": 1,
+   "write": 0,
+   "create": 0,
+   "delete": 0,
+   "report": 1,
+   "export": 1,
+   "print": 1,
+   "email": 0,
+   "share": 0
+  },
+  {
+   "role": "Stock User",
+   "read": 1,
+   "write": 0,
+   "create": 0,
+   "delete": 0,
+   "report": 1,
+   "export": 1,
+   "print": 1,
+   "email": 0,
+   "share": 0
+  }
+ ]
+}

@@ -1,19 +1,18 @@
 // India Post shipping on submitted Sales Invoices and Delivery Notes.
-// Server side: calicut_textiles/calicut_textiles/india_post.py
+// Server side: calicut_textiles/calicut_textiles/india_post.py (talks to India Post directly).
 (() => {
 	const M = "calicut_textiles.calicut_textiles.india_post.";
 	const GROUP = __("India Post");
 	const COLORS = { Booked: "blue", "In Transit": "orange", Delivered: "green", Returned: "red", Failed: "red", Cancelled: "gray" };
 	const REBOOKABLE = ["", null, undefined, "Failed", "Cancelled"];
+	// The 24/48-hour products are not bookable from Kozhikode, so only these two.
 	const PRODUCTS = [
-		{ value: "SP", label: __("Speed Post (document under 500 g, parcel above)") },
+		{ value: "SP", label: __("Speed Post (up to 500 g = document, max 2 cm thick)") },
 		{ value: "BUSINESS_PARCEL", label: __("Business Parcel") },
-		{ value: "24_SPEEDPOST_DOC", label: __("24-hour Speed Post — Document") },
-		{ value: "48_SPEEDPOST_DOC", label: __("48-hour Speed Post — Document") },
-		{ value: "24_SPP_PARSPL", label: __("24-hour Speed Post — Parcel (up to 5 kg)") },
 	];
 	// Remember the last parcel size per user — most parcels from one counter look alike.
 	const LAST_KEY = "ct_india_post_last_parcel";
+	const esc = (v) => frappe.utils.escape_html(v == null ? "" : String(v));
 
 	function lastParcel() {
 		try { return JSON.parse(localStorage.getItem(LAST_KEY)) || {}; } catch { return {}; }
@@ -23,23 +22,26 @@
 	}
 
 	function refresh(frm) {
-		if (!frappe.boot.india_post_enabled) return; // not configured, or not in the pilot list
+		if (!frappe.boot.india_post_enabled) return; // not enabled, or not in the pilot list
 		if (frm.doc.docstatus !== 1 || frm.doc.is_return) return;
 		const status = frm.doc.custom_ip_status;
 		const awb = frm.doc.custom_ip_awb;
 
 		if (awb && !REBOOKABLE.includes(status)) {
-			const last = frm.doc.custom_ip_last_event ? ` · ${frappe.utils.escape_html(frm.doc.custom_ip_last_event)}` : "";
+			const last = frm.doc.custom_ip_last_event ? ` · ${esc(frm.doc.custom_ip_last_event)}` : "";
 			frm.dashboard.set_headline_alert(
-				`${__("India Post")} <b>${frappe.utils.escape_html(awb)}</b> — ${__(status)}${last}`,
+				`${__("India Post")} <b>${esc(awb)}</b> — ${__(status)}${last}`,
 				COLORS[status] || "blue"
 			);
 			frm.add_custom_button(__("Print Label"), () => printLabel(frm), GROUP);
 			frm.add_custom_button(__("Refresh Tracking"), () => refreshTracking(frm), GROUP);
 			frm.add_custom_button(__("Copy AWB"), () => frappe.utils.copy_to_clipboard(awb), GROUP);
+			if (status === "Booked") frm.add_custom_button(__("Cancel Booking"), () => cancelBooking(frm), GROUP);
 		} else {
 			if (status === "Failed") {
 				frm.dashboard.set_headline_alert(__("India Post booking failed — see the comments below, fix and book again."), "red");
+			} else if (status === "Cancelled") {
+				frm.dashboard.set_headline_alert(__("India Post booking cancelled — never use the old label. Book again for a new AWB."), "gray");
 			}
 			frm.add_custom_button(__("Book India Post"), () => openDialog(frm), GROUP);
 		}
@@ -65,21 +67,37 @@
 		}).then(() => frm.reload_doc());
 	}
 
+	function cancelBooking(frm) {
+		frappe.prompt(
+			[{ fieldname: "reason", fieldtype: "Data", label: __("Why? (e.g. wrong address)"), reqd: 1 }],
+			(v) => frappe.call({
+				method: M + "cancel_booking",
+				args: { doctype: frm.doctype, name: frm.docname, reason: v.reason },
+				freeze: true,
+				freeze_message: __("Cancelling…"),
+			}).then(() => {
+				frappe.show_alert({ message: __("Booking cancelled. Throw away the old label; book again for a new AWB."), indicator: "orange" }, 8);
+				frm.reload_doc();
+			}),
+			__("Cancel the India Post booking for {0}? The invoice is not touched.", [frm.docname]),
+			__("Cancel Booking")
+		);
+	}
+
 	function readForm(d) {
 		const v = d.get_values(true) || {};
 		return {
 			receiver: {
 				name: v.receiver_name, mobile: v.mobile,
-				addressLine1: v.address_line1, addressLine2: v.address_line2, addressLine3: v.address_line3,
+				address_line1: v.address_line1, address_line2: v.address_line2, address_line3: v.address_line3,
 				city: v.city, state: v.state, pincode: v.pincode,
 			},
 			parcel: {
-				articleType: v.product,
+				article_type: v.product,
 				weight: cint(v.weight),
 				length: flt(v.length), breadth: flt(v.breadth), height: flt(v.height),
-				codValue: v.cod ? flt(v.cod_value) : 0,
-				insuranceValue: flt(v.insurance_value),
-				orderAmount: flt(d.order_amount),
+				cod_value: v.cod ? flt(v.cod_value) : 0,
+				insurance_value: flt(v.insurance_value),
 			},
 		};
 	}
@@ -90,25 +108,31 @@
 		);
 	}
 
+	function failureList(failures) {
+		const items = (failures || []).map((f) => {
+			const who = f.label || f.article_type;
+			return `<li>${who ? esc(who) + ": " : ""}${esc(f.error)}</li>`;
+		}).join("");
+		return items ? `<ul style="margin:6px 0 0">${items}</ul>` : "";
+	}
+
 	function showRates(d, data) {
 		const quotes = data.quotes || [];
-		if (!quotes.length) {
-			const why = (data.failures || []).map((f) => `<li>${frappe.utils.escape_html(f.articleType)}: ${frappe.utils.escape_html(f.error)}</li>`).join("");
-			return showMessage(d, `${__("No rates returned.")}<ul>${why}</ul>`, "warning");
-		}
+		if (!quotes.length) return showMessage(d, `${__("No rates returned.")}${failureList(data.failures)}`, "warning");
 		const rows = quotes.map((q) => `
 			<tr>
-				<td>${frappe.utils.escape_html(q.articleType || q.productCode || "")}</td>
-				<td class="text-right">${q.chargeableWeight ?? ""} g</td>
-				<td class="text-right"><b>${format_currency(q.finalAmount, "INR")}</b></td>
-				<td>${q.assuredDeliveryDay ? frappe.datetime.str_to_user(q.assuredDeliveryDay) : ""}</td>
+				<td>${esc(q.label || q.article_type)}</td>
+				<td class="text-right">${q.chargeable_weight ?? ""} g</td>
+				<td class="text-right"><b>${format_currency(q.final_amount, "INR")}</b></td>
 			</tr>`).join("");
+		const missing = (data.failures || []).length
+			? `<div class="text-muted small">${__("Not available:")}${failureList(data.failures)}</div>` : "";
 		d.fields_dict.result.$wrapper.html(`
 			<table class="table table-bordered table-sm" style="margin-top:8px">
 				<thead><tr><th>${__("Product")}</th><th class="text-right">${__("Charged weight")}</th>
-				<th class="text-right">${__("Total incl. GST")}</th><th>${__("Assured by")}</th></tr></thead>
+				<th class="text-right">${__("Total incl. GST")}</th></tr></thead>
 				<tbody>${rows}</tbody>
-			</table>`);
+			</table>${missing}`);
 	}
 
 	function openDialog(frm) {
@@ -134,13 +158,15 @@
 					{ fieldname: "state", fieldtype: "Data", label: __("State"), default: rc.state },
 					{ fieldtype: "Section Break" },
 					{ fieldname: "address_line1", fieldtype: "Data", label: __("Address line 1"), reqd: 1, length: 240,
-					  default: rc.addressLine1, description: rc.addressName ? __("From address {0}", [rc.addressName]) : __("No address on this document — type it in") },
-					{ fieldname: "address_line2", fieldtype: "Data", label: __("Address line 2"), default: rc.addressLine2 },
-					{ fieldname: "address_line3", fieldtype: "Data", label: __("Address line 3"), default: rc.addressLine3 },
+					  default: rc.address_line1,
+					  description: rc.address_name ? __("From address {0}", [rc.address_name]) : __("No address on this document — type it in") },
+					{ fieldname: "address_line2", fieldtype: "Data", label: __("Address line 2"), default: rc.address_line2 },
+					{ fieldname: "address_line3", fieldtype: "Data", label: __("Address line 3"), default: rc.address_line3 },
 
 					{ fieldtype: "Section Break", label: __("Parcel") },
 					{ fieldname: "product", fieldtype: "Select", label: __("Product"), reqd: 1,
-					  options: PRODUCTS, default: last.product || "SP" },
+					  options: PRODUCTS, default: PRODUCTS.some((p) => p.value === last.product) ? last.product : "SP",
+					  description: __("Light but thick parcel (≤ 500 g, over 2 cm)? Use Business Parcel.") },
 					{ fieldname: "weight", fieldtype: "Int", label: __("Weight (grams)"), reqd: 1, default: last.weight,
 					  description: __("Weigh the packed parcel. Whole grams.") },
 					{ fieldtype: "Column Break" },
@@ -148,9 +174,10 @@
 					{ fieldname: "breadth", fieldtype: "Float", label: __("Breadth (cm)"), reqd: 1, default: last.breadth || 21 },
 					{ fieldname: "height", fieldtype: "Float", label: __("Height (cm)"), reqd: 1, default: last.height || 5 },
 					{ fieldtype: "Column Break" },
-					{ fieldname: "cod", fieldtype: "Check", label: __("Cash on delivery"), default: 0 },
-					{ fieldname: "cod_value", fieldtype: "Currency", label: __("COD amount"), depends_on: "cod",
-					  default: def.outstanding || def.orderAmount },
+					{ fieldname: "cod", fieldtype: "Check", label: __("Cash on delivery"), default: 0,
+					  depends_on: "eval:doc.product=='BUSINESS_PARCEL'", description: __("Business Parcel only") },
+					{ fieldname: "cod_value", fieldtype: "Currency", label: __("COD amount"), depends_on: "eval:doc.cod && doc.product=='BUSINESS_PARCEL'",
+					  default: def.outstanding || def.order_amount },
 					{ fieldname: "insurance_value", fieldtype: "Currency", label: __("Insure for (optional)"), default: 0,
 					  description: __("Costs extra — leave 0 to skip") },
 
@@ -174,7 +201,8 @@
 				primary_action() {
 					if (!d.get_values()) return; // shows missing mandatory fields
 					const { receiver, parcel } = readForm(d);
-					saveParcel({ product: parcel.articleType, weight: parcel.weight, length: parcel.length, breadth: parcel.breadth, height: parcel.height });
+					if (parcel.article_type !== "BUSINESS_PARCEL") parcel.cod_value = 0;
+					saveParcel({ product: parcel.article_type, weight: parcel.weight, length: parcel.length, breadth: parcel.breadth, height: parcel.height });
 					d.get_primary_btn().prop("disabled", true);
 					frappe.call({
 						method: M + "book",
@@ -185,7 +213,7 @@
 						const out = res.message || {};
 						if (!out.ok) {
 							d.get_primary_btn().prop("disabled", false);
-							const list = (out.errors || []).map((e) => `<li>${frappe.utils.escape_html(e)}</li>`).join("");
+							const list = (out.errors || []).map((e) => `<li>${esc(e)}</li>`).join("");
 							const head = out.stage === "validation"
 								? __("Please fix these before booking:")
 								: __("India Post rejected the booking:");
@@ -193,14 +221,16 @@
 						}
 						d.hide();
 						const s = out.shipment || {};
-						frappe.show_alert({ message: __("Booked — AWB {0}", [s.awb]), indicator: "green" }, 7);
-						if (out.labelUrl) window.open(out.labelUrl, "_blank");
-						else if (out.labelError) frappe.msgprint(__("Booked, but the label could not be fetched yet: {0}. Use India Post → Print Label.", [out.labelError]));
+						frappe.show_alert({ message: __("Booked — AWB {0}, ₹{1}", [s.awb, s.charge]), indicator: "green" }, 7);
+						if (out.label_url) window.open(out.label_url, "_blank");
+						else if (out.label_error) frappe.msgprint(__("Booked, but the label could not be fetched yet: {0}. Use India Post → Print Label.", [out.label_error]));
+						if ((out.warnings || []).length) {
+							frappe.msgprint({ title: __("Note"), indicator: "orange", message: out.warnings.map(esc).join("<br>") });
+						}
 						frm.reload_doc();
 					}).catch(() => d.get_primary_btn().prop("disabled", false));
 				},
 			});
-			d.order_amount = def.orderAmount;
 			d.show();
 		});
 	}
