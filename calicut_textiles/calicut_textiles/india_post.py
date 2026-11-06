@@ -154,16 +154,21 @@ def _local(iso):
 
 
 def _values(s):
-	return {
+	values = {
 		"custom_ip_awb": s.get("awb"),
 		"custom_ip_status": STATUS_LABELS.get(s.get("status"), ""),
 		"custom_ip_product": s.get("articleType"),
-		"custom_ip_charge": flt(s.get("charge")) if s.get("charge") is not None else None,
+		# Currency columns are NOT NULL — a cancelled booking has no charge.
+		"custom_ip_charge": flt(s.get("charge")),
 		"custom_ip_booked_on": _local(s.get("bookedAt")),
 		"custom_ip_last_event": (s.get("lastEvent") or "")[:140] or None,
 		"custom_ip_last_event_at": _local(s.get("lastEventAt")),
 		"custom_ip_delivered_on": _local(s.get("deliveredAt")),
 	}
+	if not s.get("awb"):
+		# Cancelled on the bridge: the old label must not stay on the document.
+		values["custom_ip_label"] = None
+	return values
 
 
 def _apply(doctype, name, shipment):
